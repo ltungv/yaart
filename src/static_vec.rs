@@ -4,10 +4,18 @@ use std::{
 };
 
 /// A vector with fixed capacity.
-#[derive(Debug)]
 pub struct StaticVec<T, const N: usize> {
     len: usize,
     data: [MaybeUninit<T>; N],
+}
+
+impl<T, const N: usize> std::fmt::Debug for StaticVec<T, N>
+where
+    T: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.as_ref())
+    }
 }
 
 impl<T, const N: usize> Default for StaticVec<T, N> {
@@ -95,13 +103,14 @@ impl<'a, T, const N: usize> IntoIterator for &'a mut StaticVec<T, N> {
 
 impl<T, const N: usize> StaticVec<T, N> {
     /// Push a value into the vector, returning an error if the vector is full.
-    pub fn push_within_capacity(&mut self, value: T) -> Result<(), T> {
-        if self.len >= N {
-            return Err(value);
+    pub fn push_within_capacity(&mut self, value: T) -> Option<usize> {
+        let idx = self.len;
+        if idx >= N {
+            return None;
         }
-        self.data[self.len] = MaybeUninit::new(value);
+        self.data[idx] = MaybeUninit::new(value);
         self.len += 1;
-        Ok(())
+        Some(idx)
     }
 
     /// Get the length of the vector.
@@ -118,16 +127,6 @@ impl<T, const N: usize> StaticVec<T, N> {
     pub fn iter_mut(&mut self) -> std::slice::IterMut<T> {
         self.into_iter()
     }
-
-    pub fn search_linear(&self, key: &T) -> Option<usize>
-    where
-        T: PartialEq,
-    {
-        self.iter()
-            .enumerate()
-            .find(|(_, k)| key.eq(*k))
-            .map(|(i, _)| i)
-    }
 }
 
 #[cfg(test)]
@@ -142,18 +141,18 @@ mod tests {
 
         // Insert until limit.
         for i in 0..16 {
-            assert_eq!(v.push_within_capacity(i), Ok(()));
+            assert_eq!(v.push_within_capacity(i), Some(i));
         }
 
         // Error on over-full.
-        assert_eq!(v.push_within_capacity(16), Err(16));
+        assert_eq!(v.push_within_capacity(16), None);
         assert_eq!(v.len(), 16);
 
         // Iterate and search for item.
         for (i, x) in v.iter().enumerate() {
             assert_eq!(*x, i);
             assert_eq!(v[i], i);
-            assert_eq!(v.search_linear(x), Some(i));
+            assert_eq!(v.iter().position(|k| k == x), Some(i));
         }
     }
 
