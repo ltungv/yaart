@@ -102,7 +102,8 @@ impl<'a, T, const N: usize> IntoIterator for &'a mut StaticVec<T, N> {
 }
 
 impl<T, const N: usize> StaticVec<T, N> {
-    /// Push a value into the vector, returning an error if the vector is full.
+    /// Push a value into the vector. If the vector is full, return `None`.
+    /// Otherwise, return the index of the pushed value.
     pub fn push_within_capacity(&mut self, value: T) -> Option<usize> {
         let idx = self.len;
         if idx >= N {
@@ -118,12 +119,12 @@ impl<T, const N: usize> StaticVec<T, N> {
         self.len
     }
 
-    /// Get an iterator over the vector.
+    /// Get an iterator over immutable elements in the vector.
     pub fn iter(&self) -> std::slice::Iter<T> {
         self.into_iter()
     }
 
-    /// Get a mutable iterator over the vector.
+    /// Get an iterator over mutable elements in the vector.
     pub fn iter_mut(&mut self) -> std::slice::IterMut<T> {
         self.into_iter()
     }
