@@ -1,7 +1,13 @@
 [package]
 name = "yaart"
+description = "Yet another adaptive radix tree"
+categories = ["data-structures"]
+keywords = ["adaptive", "radix", "tree"]
+
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+repository = "gitlab.com/letung3105/yaart"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
