@@ -1,4 +1,4 @@
-//! A library containing an implementation of Adaptive Radix Tree.
+//! # Adaptive Radix Tree
 
 #![warn(
     clippy::pedantic,
@@ -10,5 +10,6 @@
 #![deny(clippy::all, missing_docs, rust_2018_idioms, rust_2021_compatibility)]
 
 mod art;
+mod indices;
 
 pub use art::*;
