@@ -98,6 +98,30 @@ impl<'a, T, const N: usize> IntoIterator for &'a Sorted<T, N> {
     }
 }
 
+impl<T, const N: usize> Sorted<T, N> {
+    pub fn consume_sorted<const M: usize>(&mut self, other: &mut Sorted<T, M>) {
+        for i in 0..other.len as usize {
+            self.keys[i] = other.keys[i];
+            std::mem::swap(&mut self.children[i], &mut other.children[i]);
+        }
+        self.len = other.len;
+        other.len = 0;
+    }
+
+    pub fn consume_indirect<const M: usize>(&mut self, other: &mut Indirect<T, M>) {
+        self.len = 0;
+        for key in 0..=255 {
+            if let Some(idx) = other.indices[key as usize] {
+                let pos = self.len as usize;
+                self.keys[pos] = key;
+                std::mem::swap(&mut self.children[pos], &mut other.children[idx as usize]);
+                self.len += 1;
+            }
+        }
+        other.len = 0;
+    }
+}
+
 #[derive(Debug)]
 pub struct SortedIter<'a, T, const N: usize> {
     indices: &'a Sorted<T, N>,
@@ -190,6 +214,29 @@ impl<'a, T, const N: usize> IntoIterator for &'a Indirect<T, N> {
     }
 }
 
+impl<T, const N: usize> Indirect<T, N> {
+    pub fn consume_sorted<const M: usize>(&mut self, other: &mut Sorted<T, M>) {
+        for idx in 0..other.len {
+            let pos = idx as usize;
+            self.indices[other.keys[pos] as usize] = Some(idx);
+            std::mem::swap(&mut self.children[pos], &mut other.children[pos]);
+        }
+        self.len = other.len;
+        other.len = 0;
+    }
+
+    pub fn consume_direct(&mut self, other: &mut Direct<T>) {
+        self.len = 0;
+        for key in 0..256 {
+            if let Some(child) = other.children[key].take() {
+                self.indices[key] = Some(self.len);
+                self.children[self.len as usize].write(child);
+                self.len += 1;
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct IndirectIter<'a, T, const N: usize> {
     indices: &'a Indirect<T, N>,
@@ -260,6 +307,20 @@ impl<'a, T> IntoIterator for &'a Direct<T> {
             indices: self,
             idx: 0,
         }
+    }
+}
+
+impl<T> Direct<T> {
+    pub fn consume_indirect<const N: usize>(&mut self, other: &mut Indirect<T, N>) {
+        for key in 0..256 {
+            self.children[key] = other.indices[key].map(|idx| {
+                let mut tmp = MaybeUninit::uninit();
+                std::mem::swap(&mut tmp, &mut other.children[idx as usize]);
+                // SAFETY: If we found Some(index), the corresponding child must have been initialized.
+                unsafe { tmp.assume_init() }
+            });
+        }
+        other.len = 0;
     }
 }
 
@@ -457,6 +518,76 @@ mod tests {
             indices.add_child(i, i as usize);
         }
         for (i, (key, child)) in indices.into_iter().enumerate() {
+            assert_eq!(i, key as usize);
+            assert_eq!(i, *child);
+        }
+    }
+
+    #[test]
+    fn test_sorted_from_sorted() {
+        let mut indices = Sorted::<usize, 4>::default();
+        for i in 0..4 {
+            indices.add_child(i, i as usize);
+        }
+        let mut new_indices = Sorted::<usize, 16>::default();
+        new_indices.consume_sorted(&mut indices);
+        for (i, (key, child)) in new_indices.into_iter().enumerate() {
+            assert_eq!(i, key as usize);
+            assert_eq!(i, *child);
+        }
+    }
+
+    #[test]
+    fn test_sorted_from_indirect() {
+        let mut indices = Indirect::<usize, 48>::default();
+        for i in 0..16 {
+            indices.add_child(i, i as usize);
+        }
+        let mut new_indices = Sorted::<usize, 16>::default();
+        new_indices.consume_indirect(&mut indices);
+        for (i, (key, child)) in new_indices.into_iter().enumerate() {
+            assert_eq!(i, key as usize);
+            assert_eq!(i, *child);
+        }
+    }
+
+    #[test]
+    fn test_indirect_from_sorted() {
+        let mut indices = Sorted::<usize, 16>::default();
+        for i in 0..16 {
+            indices.add_child(i, i as usize);
+        }
+        let mut new_indices = Indirect::<usize, 48>::default();
+        new_indices.consume_sorted(&mut indices);
+        for (i, (key, child)) in new_indices.into_iter().enumerate() {
+            assert_eq!(i, key as usize);
+            assert_eq!(i, *child);
+        }
+    }
+
+    #[test]
+    fn test_indirect_from_direct() {
+        let mut indices = Direct::<usize>::default();
+        for i in 0..48 {
+            indices.add_child(i, i as usize);
+        }
+        let mut new_indices = Indirect::<usize, 48>::default();
+        new_indices.consume_direct(&mut indices);
+        for (i, (key, child)) in new_indices.into_iter().enumerate() {
+            assert_eq!(i, key as usize);
+            assert_eq!(i, *child);
+        }
+    }
+
+    #[test]
+    fn test_direct_from_indirect() {
+        let mut indices = Indirect::<usize, 48>::default();
+        for i in 0..48 {
+            indices.add_child(i, i as usize);
+        }
+        let mut new_indices = Direct::<usize>::default();
+        new_indices.consume_indirect(&mut indices);
+        for (i, (key, child)) in new_indices.into_iter().enumerate() {
             assert_eq!(i, key as usize);
             assert_eq!(i, *child);
         }

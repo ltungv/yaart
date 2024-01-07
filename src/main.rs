@@ -1,8 +1,11 @@
 use yaart::Tree;
 
 fn main() {
-    let mut tree = Tree::<String, String>::default();
-    tree.insert("hello".to_string(), "world".to_string());
-    tree.insert("world".to_string(), "hello".to_string());
-    print!("{:?}", tree);
+    let mut tree = Tree::default();
+    tree.insert("and".to_string(), ());
+    tree.insert("ant".to_string(), ());
+    tree.insert("any".to_string(), ());
+    tree.insert("are".to_string(), ());
+    tree.insert("art".to_string(), ());
+    println!("{:?}", tree);
 }
