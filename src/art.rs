@@ -710,11 +710,34 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, net::Ipv4Addr};
+    use std::{collections::HashMap, ops::Range};
 
-    use rand::Rng;
+    use rand::{distributions::Alphanumeric, seq::SliceRandom, Rng};
 
     use crate::Tree;
+
+    fn get_key_samples(prefix_sizes: Range<usize>, keys_per_prefix: usize) -> Vec<String> {
+        let mut keys = Vec::new();
+        for prefix_len in prefix_sizes {
+            let prefix: String = rand::thread_rng()
+                .sample_iter(Alphanumeric)
+                .map(char::from)
+                .take(prefix_len)
+                .collect();
+
+            for _ in 0..keys_per_prefix {
+                let suffix: String = rand::thread_rng()
+                    .sample_iter(Alphanumeric)
+                    .map(char::from)
+                    .take(32)
+                    .collect();
+                keys.push(prefix.clone() + &suffix);
+            }
+        }
+        let mut rng = rand::thread_rng();
+        keys.shuffle(&mut rng);
+        keys
+    }
 
     #[test]
     fn test_insert_tree_tiny() {
@@ -728,22 +751,16 @@ mod tests {
     }
 
     #[test]
-    fn test_all_operations_naive() {
+    fn test_all_operations() {
+        let keys = get_key_samples(1..64, 256);
+        let mut rng = rand::thread_rng();
         let mut tree = Tree::default();
         let mut hash = HashMap::new();
-        let mut rng = rand::thread_rng();
 
-        for d in 0..=3 {
-            for c in 0..=15 {
-                for b in 0..=63 {
-                    for a in 0..=255 {
-                        let ip = Ipv4Addr::new(a, b, c, d);
-                        let v: u32 = rng.gen();
-                        tree.insert(ip.to_string(), v);
-                        hash.insert(ip.to_string(), v);
-                    }
-                }
-            }
+        for key in keys {
+            let v: u32 = rng.gen();
+            tree.insert(key.clone(), v);
+            hash.insert(key.clone(), v);
         }
 
         for (k, v) in &hash {
