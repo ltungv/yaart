@@ -711,7 +711,11 @@ mod tests {
 
     use crate::Tree;
 
-    fn get_key_samples(prefix_sizes: Range<usize>, keys_per_prefix: usize) -> Vec<String> {
+    fn get_key_samples(
+        prefix_sizes: Range<usize>,
+        suffix_count: usize,
+        suffix_size: usize,
+    ) -> Vec<String> {
         let mut keys = Vec::new();
         for prefix_len in prefix_sizes {
             let prefix: String = rand::thread_rng()
@@ -720,11 +724,11 @@ mod tests {
                 .take(prefix_len)
                 .collect();
 
-            for _ in 0..keys_per_prefix {
+            for _ in 0..suffix_count {
                 let suffix: String = rand::thread_rng()
                     .sample_iter(Alphanumeric)
                     .map(char::from)
-                    .take(32)
+                    .take(suffix_size)
                     .collect();
                 keys.push(prefix.clone() + &suffix);
             }
@@ -747,7 +751,7 @@ mod tests {
 
     #[test]
     fn test_all_operations() {
-        let keys = get_key_samples(1..64, 256);
+        let keys = get_key_samples(0..256, 256, 64);
         let mut rng = rand::thread_rng();
         let mut tree = Tree::default();
         let mut hash = HashMap::new();
