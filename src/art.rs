@@ -66,7 +66,7 @@ where
         };
         self.root.take().map(|deleted| {
             let Node::Leaf(leaf) = deleted else {
-                unreachable!("[bug] deleted node must be a leaf")
+                unreachable!("[bug] deleted node must be a leaf.")
             };
             leaf.value
         })
@@ -108,7 +108,7 @@ impl<K, V, const P: usize> Node<K, V, P> {
 
     fn add_child(&mut self, key: u8, child: Self) {
         let Self::Internal(node) = self else {
-            unreachable!("[bug] can't add child to leaf");
+            unreachable!("[bug] can't add to leaf.");
         };
         node.indices.add_child(key, child);
     }
@@ -132,13 +132,13 @@ where
 
     fn delete(&mut self, key: &[u8], depth: usize) -> Option<V> {
         let Self::Internal(node) = self else {
-            unreachable!("[bug] can't delete from leaf")
+            unreachable!("[bug] can't delete from leaf.")
         };
-        // Bail out if the key doesn't match the prefix partial.
+        // The key doesn't match the prefix partial.
         if !node.partial.match_key(key, depth) {
             return None;
         }
-        // Find a child node.
+        // Find the child node corresponding to the key.
         let depth = depth + node.partial.len;
         let child_key = byte_at(key, depth);
         let Some(child) = node.indices.child_mut(child_key) else {
@@ -152,12 +152,9 @@ where
         if !leaf.match_key(key) {
             return None;
         }
-        let Self::Leaf(deleted_leaf) = node
-            .indices
-            .del_child(child_key)
-            .expect("[bug] a child must be found")
-        else {
-            unreachable!("[bug] deleted node must be a leaf")
+        // Do deletion.
+        let Some(Self::Leaf(deleted_leaf)) = node.indices.del_child(child_key) else {
+            unreachable!("[bug] a leaf must exist.")
         };
         if let Some(node) = node.shrink() {
             *self = node;
@@ -215,10 +212,7 @@ where
                             let old_node = std::mem::replace(self, Self::new_internal(partial));
                             self.add_child(byte_key, old_node);
                         } else {
-                            let leaf = node
-                                .indices
-                                .min_leaf()
-                                .expect("[bug] there must be a min leaf");
+                            let leaf = node.indices.min_leaf().expect("[bug] a leaf must exist.");
                             let byte_key = {
                                 let leaf_key_bytes = leaf.key.bytes();
                                 let offset = depth + shift;
@@ -311,7 +305,7 @@ where
                     let sub_child_key = indices.byte_at(0);
                     let mut sub_child = indices
                         .del_child(sub_child_key)
-                        .expect("[bug] there must be a child");
+                        .expect("[bug] a child must exist.");
                     if let Node::Internal(sub_child) = &mut sub_child {
                         let mut prefix_len = self.partial.len;
                         if prefix_len < P {
@@ -365,10 +359,7 @@ where
         }
         // If the prefix is short so we don't have to check a leaf.
         if self.partial.len > P {
-            let leaf = self
-                .indices
-                .min_leaf()
-                .expect("[bug] there must be a min leaf");
+            let leaf = self.indices.min_leaf().expect("[bug] a leaf must exist.");
             idx += longest_common_prefix(leaf.key.bytes().as_ref(), key, depth + idx);
         }
         idx
@@ -440,26 +431,26 @@ impl<K, V, const P: usize> InternalIndices<K, V, P> {
     }
 
     fn min_leaf(&self) -> Option<&Leaf<K, V>> {
-        let child = match self {
+        match self {
             Self::Node4(indices) => indices.min(),
             Self::Node16(indices) => indices.min(),
             Self::Node48(indices) => indices.min(),
             Self::Node256(indices) => indices.min(),
-        };
-        child.and_then(|child| match child {
+        }
+        .and_then(|child| match child {
             Node::Leaf(leaf) => Some(leaf.as_ref()),
             Node::Internal(node) => node.indices.min_leaf(),
         })
     }
 
     fn max_leaf(&self) -> Option<&Leaf<K, V>> {
-        let child = match self {
+        match self {
             Self::Node4(indices) => indices.max(),
             Self::Node16(indices) => indices.max(),
             Self::Node48(indices) => indices.max(),
             Self::Node256(indices) => indices.max(),
-        };
-        child.and_then(|child| match child {
+        }
+        .and_then(|child| match child {
             Node::Leaf(leaf) => Some(leaf.as_ref()),
             Node::Internal(node) => node.indices.max_leaf(),
         })
