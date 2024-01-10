@@ -332,14 +332,13 @@ impl<'a, T, const N: usize> Iterator for IndirectIter<'a, T, N> {
     type Item = (u8, &'a T);
 
     fn next(&mut self) -> Option<Self::Item> {
-        while self.idx < 256 {
+        loop {
             let key = u8::try_from(self.idx).ok()?;
             self.idx += 1;
             if let Some(child) = &self.indices.child_ref(key) {
                 return Some((key, child));
             }
         }
-        None
     }
 }
 
