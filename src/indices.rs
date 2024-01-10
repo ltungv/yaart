@@ -45,57 +45,72 @@ impl<T, const N: usize> Indices<T> for Sorted<T, N> {
     }
 
     fn del_child(&mut self, key: u8) -> Option<T> {
-        let idx = if N > 4 {
+        if N > 4 {
             self.search_binary(key)
         } else {
             self.search_linear(key)
-        };
-        self.len -= 1;
-        idx.map(|idx| {
-            let mut tmp = MaybeUninit::uninit();
-            std::mem::swap(&mut tmp, &mut self.children[idx]);
+        }
+        .map(|idx| {
+            let mut child = MaybeUninit::uninit();
+            std::mem::swap(&mut child, &mut self.children[idx]);
+            self.len -= 1;
             self.keys[idx..].rotate_left(1);
             self.children[idx..].rotate_left(1);
             // SAFETY: Children at index less than `len` must have been initialized.
-            unsafe { tmp.assume_init() }
+            unsafe { child.assume_init() }
         })
     }
 
     fn add_child(&mut self, key: u8, child: T) {
-        debug_assert!((self.len as usize) < N);
-        let idx = self.keys[..self.len as usize]
-            .iter()
-            .take_while(|&&k| k < key)
-            .count();
-
-        self.keys[idx..].rotate_right(1);
-        self.children[idx..].rotate_right(1);
-        self.keys[idx] = key;
-        self.children[idx].write(child);
+        let idx = if N > 4 {
+            let mut l = 0;
+            let mut r = self.len as usize;
+            while l < r {
+                let m = l + (r - l) / 2;
+                if self.keys[m] == key {
+                    break;
+                }
+                if self.keys[m] < key {
+                    l = m + 1;
+                } else {
+                    r = m;
+                }
+            }
+            l
+        } else {
+            self.keys[..self.len as usize]
+                .iter()
+                .take_while(|&&k| k < key)
+                .count()
+        };
         self.len += 1;
+        self.keys[idx..].rotate_right(1);
+        self.keys[idx] = key;
+        self.children[idx..].rotate_right(1);
+        self.children[idx].write(child);
     }
 
     fn child_ref(&self, key: u8) -> Option<&T> {
-        let idx = if N > 4 {
+        if N > 4 {
             self.search_binary(key)
         } else {
             self.search_linear(key)
-        };
-        idx.map(|idx| {
+        }
+        .map(|idx| unsafe {
             // SAFETY: Children at index less than `len` must have been initialized.
-            unsafe { self.children[idx].assume_init_ref() }
+            self.children[idx].assume_init_ref()
         })
     }
 
     fn child_mut(&mut self, key: u8) -> Option<&mut T> {
-        let idx = if N > 4 {
+        if N > 4 {
             self.search_binary(key)
         } else {
             self.search_linear(key)
-        };
-        idx.map(|idx| {
+        }
+        .map(|idx| unsafe {
             // SAFETY: Children at index less than `len` must have been initialized.
-            unsafe { self.children[idx].assume_init_mut() }
+            self.children[idx].assume_init_mut()
         })
     }
 
@@ -128,6 +143,10 @@ impl<'a, T, const N: usize> IntoIterator for &'a Sorted<T, N> {
 }
 
 impl<T, const N: usize> Sorted<T, N> {
+    pub const fn byte_at(&self, idx: usize) -> u8 {
+        self.keys[idx]
+    }
+
     pub fn consume_sorted<const M: usize>(&mut self, other: &mut Sorted<T, M>) {
         for i in 0..other.len as usize {
             self.keys[i] = other.keys[i];
@@ -142,16 +161,12 @@ impl<T, const N: usize> Sorted<T, N> {
         for key in 0..=255 {
             if let Some(idx) = other.indices[key as usize] {
                 let pos = self.len as usize;
+                self.len += 1;
                 self.keys[pos] = key;
                 std::mem::swap(&mut self.children[pos], &mut other.children[idx as usize]);
-                self.len += 1;
             }
         }
         other.len = 0;
-    }
-
-    pub const fn key_at(&self, idx: usize) -> u8 {
-        self.keys[idx]
     }
 
     fn search_linear(&self, key: u8) -> Option<usize> {
@@ -226,19 +241,20 @@ impl<T, const N: usize> Indices<T> for Indirect<T, N> {
     }
 
     fn del_child(&mut self, key: u8) -> Option<T> {
-        self.len -= 1;
         self.indices[key as usize].take().map(|idx| {
+            self.len -= 1;
             let mut tmp = MaybeUninit::uninit();
             std::mem::swap(&mut tmp, &mut self.children[idx as usize]);
+            // SAFETY: If we found Some(index), the corresponding child must have been initialized.
             unsafe { tmp.assume_init() }
         })
     }
 
     fn add_child(&mut self, key: u8, child: T) {
-        debug_assert!((self.len as usize) < N);
-        self.indices[key as usize] = Some(self.len);
         self.children[self.len as usize].write(child);
-        self.len += 1;
+        if self.indices[key as usize].replace(self.len).is_none() {
+            self.len += 1;
+        }
     }
 
     fn child_ref(&self, key: u8) -> Option<&T> {
@@ -296,8 +312,8 @@ impl<T, const N: usize> Indirect<T, N> {
 
     pub fn consume_direct(&mut self, other: &mut Direct<T>) {
         self.len = 0;
-        for key in 0..256 {
-            if let Some(child) = other.children[key].take() {
+        for (key, child) in other.children.iter_mut().enumerate() {
+            if let Some(child) = child.take() {
                 self.indices[key] = Some(self.len);
                 self.children[self.len as usize].write(child);
                 self.len += 1;
@@ -352,13 +368,16 @@ impl<T> Indices<T> for Direct<T> {
     }
 
     fn del_child(&mut self, key: u8) -> Option<T> {
-        self.len -= 1;
-        self.children[key as usize].take()
+        self.children[key as usize].take().map(|child| {
+            self.len -= 1;
+            child
+        })
     }
 
     fn add_child(&mut self, key: u8, child: T) {
-        self.children[key as usize] = Some(child);
-        self.len += 1;
+        if self.children[key as usize].replace(child).is_none() {
+            self.len += 1;
+        }
     }
 
     fn child_ref(&self, key: u8) -> Option<&T> {
@@ -393,8 +412,10 @@ impl<'a, T> IntoIterator for &'a Direct<T> {
 
 impl<T> Direct<T> {
     pub fn consume_indirect<const N: usize>(&mut self, other: &mut Indirect<T, N>) {
+        self.len = 0;
         for key in 0..256 {
             self.children[key] = other.indices[key].map(|idx| {
+                self.len += 1;
                 let mut tmp = MaybeUninit::uninit();
                 std::mem::swap(&mut tmp, &mut other.children[idx as usize]);
                 // SAFETY: If we found Some(index), the corresponding child must have been initialized.
@@ -451,7 +472,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sorted_indices_get_child() {
+    fn test_sorted4_indices_get_child() {
         let mut indices = Sorted::<usize, 4>::default();
         for i in 0..4 {
             indices.add_child(i, i as usize);
@@ -461,7 +482,10 @@ mod tests {
             assert_eq!(*child, i as usize);
         }
         assert!(indices.child_ref(4).is_none());
+    }
 
+    #[test]
+    fn test_sorted16_indices_get_child() {
         let mut indices = Sorted::<usize, 16>::default();
         for i in 0..16 {
             indices.add_child(i, i as usize);
@@ -495,7 +519,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sorted_indices_del_child() {
+    fn test_sorted4_indices_del_child() {
         let mut indices = Sorted::<usize, 4>::default();
         for i in 0..4 {
             indices.add_child(i, i as usize);
@@ -503,9 +527,20 @@ mod tests {
         for i in (0..2).rev() {
             assert_eq!(indices.del_child(i), Some(i as usize));
         }
+        for i in (0..2).rev() {
+            assert_eq!(indices.del_child(i), None);
+        }
+        for (i, (k, x)) in (2..4).zip(&indices) {
+            assert_eq!(i, k);
+            assert_eq!(i as usize, *x);
+        }
         assert!(!indices.is_full());
         assert_eq!(indices.len(), 2);
+        assert_eq!(indices.into_iter().count(), 2);
+    }
 
+    #[test]
+    fn test_sorted16_indices_del_child() {
         let mut indices = Sorted::<usize, 16>::default();
         for i in 0..16 {
             indices.add_child(i, i as usize);
@@ -513,8 +548,16 @@ mod tests {
         for i in (0..8).rev() {
             assert_eq!(indices.del_child(i), Some(i as usize));
         }
+        for i in (0..8).rev() {
+            assert_eq!(indices.del_child(i), None);
+        }
+        for (i, (k, x)) in (8..16).zip(&indices) {
+            assert_eq!(i, k);
+            assert_eq!(i as usize, *x);
+        }
         assert!(!indices.is_full());
         assert_eq!(indices.len(), 8);
+        assert_eq!(indices.into_iter().count(), 8);
     }
 
     #[test]
@@ -582,8 +625,16 @@ mod tests {
         for i in (0..24).rev() {
             assert_eq!(indices.del_child(i), Some(i as usize));
         }
+        for i in (0..24).rev() {
+            assert_eq!(indices.del_child(i), None);
+        }
+        for (i, (k, x)) in (24..48).zip(&indices) {
+            assert_eq!(i, k);
+            assert_eq!(i as usize, *x);
+        }
         assert!(!indices.is_full());
         assert_eq!(indices.len(), 24);
+        assert_eq!(indices.into_iter().count(), 24);
     }
 
     #[test]
@@ -650,8 +701,16 @@ mod tests {
         for i in (0..128).rev() {
             assert_eq!(indices.del_child(i), Some(i as usize));
         }
+        for i in (0..128).rev() {
+            assert_eq!(indices.del_child(i), None);
+        }
+        for (i, (k, x)) in (128..=255).zip(&indices) {
+            assert_eq!(i, k);
+            assert_eq!(i as usize, *x);
+        }
         assert!(!indices.is_full());
         assert_eq!(indices.len(), 128);
+        assert_eq!(indices.into_iter().count(), 128);
     }
 
     #[test]
