@@ -4,8 +4,7 @@ use std::{borrow::Borrow, cmp::min};
 
 use crate::indices::{Direct, Indices, Indirect, Sorted};
 
-/// An adaptive radix tree. This structure contains the root node of the tree and serves as the
-/// entrypoint for all tree operations.
+/// An adaptive radix tree.
 #[derive(Default)]
 pub struct Tree<K, V> {
     root: Option<Node<K, V, 8>>,
@@ -18,10 +17,9 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(root) = &self.root {
-            debug_print_node(f, root, 0, 0)
-        } else {
-            writeln!(f, "empty")
+            return root.debug_print_node(f, 0, 0);
         }
+        writeln!(f, "empty")
     }
 }
 
@@ -43,10 +41,11 @@ where
     /// Insert the given key-value pair into the tree.
     pub fn insert(&mut self, key: K, value: V) {
         if let Some(ref mut root) = self.root {
-            root.insert(key, value, 0);
-        } else {
-            self.root = Some(Node::new_leaf(key, value));
+            // Recursively insert the key-value pair into the tree.
+            return root.insert(key, value, 0);
         }
+        // Simply create a new leaf to replace the current root.
+        self.root = Some(Node::new_leaf(key, value));
     }
 
     /// Delete the value associated with the given key.
@@ -55,21 +54,29 @@ where
         K: Borrow<Q>,
         Q: BytesComparable + ?Sized,
     {
-        let Some(root) = &mut self.root else {
+        // Take the root node out so we can easily work with it.
+        let Some(mut root) = self.root.take() else {
+            // Stop if the tree is empty.
             return None;
         };
+
+        // Extract the leaf to check if the keys match.
         let Node::Leaf(leaf) = root else {
-            return root.delete(key.bytes().as_ref(), 0);
+            // If the root is an internal node, recursively delete the key from it. Once finished,
+            // put the root back into the tree.
+            let prev = root.delete(key.bytes().as_ref(), 0);
+            self.root = Some(root);
+            return prev;
         };
+
         if !leaf.match_key(key.bytes().as_ref()) {
+            // If the key doesn't match, put the root back into the tree.
+            self.root = Some(Node::Leaf(leaf));
             return None;
         };
-        self.root.take().map(|deleted| {
-            let Node::Leaf(leaf) = deleted else {
-                unreachable!("[bug] deleted node must be a leaf.")
-            };
-            leaf.value
-        })
+
+        // The keys match, so we don't put the root back into the tree and return the value.
+        Some(leaf.value)
     }
 
     /// Find the minimum key-value pair in the tree.
@@ -236,6 +243,54 @@ where
                 }
             }
         }
+    }
+}
+
+impl<K, V, const P: usize> Node<K, V, P>
+where
+    K: std::fmt::Debug,
+    V: std::fmt::Debug,
+{
+    fn debug_print_node(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        key: u8,
+        level: usize,
+    ) -> std::fmt::Result
+where {
+        debug_print_indentation(f, level)?;
+        match self {
+            Self::Leaf(leaf) => {
+                writeln!(f, "[{:03}] leaf: {:?} -> {:?}", key, leaf.key, leaf.value)?;
+            }
+            Self::Internal(node) => match &node.indices {
+                InternalIndices::Node4(indices) => {
+                    writeln!(f, "[{:03}] node4 {:?}", key, node.partial)?;
+                    for (key, child) in indices.as_ref() {
+                        child.debug_print_node(f, key, level + 1)?;
+                    }
+                }
+                InternalIndices::Node16(indices) => {
+                    writeln!(f, "[{:03}] node16 {:?}", key, node.partial)?;
+                    for (key, child) in indices.as_ref() {
+                        child.debug_print_node(f, key, level + 1)?;
+                    }
+                }
+                InternalIndices::Node48(indices) => {
+                    writeln!(f, "[{:03}] node48 {:?}", key, node.partial)?;
+                    for (key, child) in indices.as_ref() {
+                        child.debug_print_node(f, key, level + 1)?;
+                    }
+                }
+                InternalIndices::Node256(indices) => {
+                    writeln!(f, "[{:03}] node256 {:?}", key, node.partial)?;
+                    for (key, child) in indices.as_ref() {
+                        child.debug_print_node(f, key, level + 1)?;
+                    }
+                }
+            },
+        }
+        Ok(())
     }
 }
 
@@ -654,51 +709,6 @@ fn debug_print_indentation(
 ) -> std::fmt::Result {
     for _ in 0..level {
         write!(formatter, "  ")?;
-    }
-    Ok(())
-}
-
-fn debug_print_node<K, V, const P: usize>(
-    f: &mut std::fmt::Formatter<'_>,
-    node: &Node<K, V, P>,
-    key: u8,
-    level: usize,
-) -> std::fmt::Result
-where
-    K: std::fmt::Debug,
-    V: std::fmt::Debug,
-{
-    debug_print_indentation(f, level)?;
-    match node {
-        Node::Leaf(leaf) => {
-            writeln!(f, "[{:03}] leaf: {:?} -> {:?}", key, leaf.key, leaf.value)?;
-        }
-        Node::Internal(node) => match &node.indices {
-            InternalIndices::Node4(indices) => {
-                writeln!(f, "[{:03}] node4 {:?}", key, node.partial)?;
-                for (key, child) in indices.as_ref() {
-                    debug_print_node(f, child, key, level + 1)?;
-                }
-            }
-            InternalIndices::Node16(indices) => {
-                writeln!(f, "[{:03}] node16 {:?}", key, node.partial)?;
-                for (key, child) in indices.as_ref() {
-                    debug_print_node(f, child, key, level + 1)?;
-                }
-            }
-            InternalIndices::Node48(indices) => {
-                writeln!(f, "[{:03}] node48 {:?}", key, node.partial)?;
-                for (key, child) in indices.as_ref() {
-                    debug_print_node(f, child, key, level + 1)?;
-                }
-            }
-            InternalIndices::Node256(indices) => {
-                writeln!(f, "[{:03}] node256 {:?}", key, node.partial)?;
-                for (key, child) in indices.as_ref() {
-                    debug_print_node(f, child, key, level + 1)?;
-                }
-            }
-        },
     }
     Ok(())
 }
