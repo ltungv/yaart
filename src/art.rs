@@ -138,7 +138,7 @@ where
 
     fn delete(&mut self, key: &[u8], depth: usize) -> Option<V> {
         let Self::Inner(inner) = self else {
-            unreachable!("[bug] can't delete from leaf.")
+            return None;
         };
         // The key doesn't match the prefix partial.
         if !inner.partial.match_key(key, depth) {
@@ -160,7 +160,7 @@ where
         }
         // Do deletion.
         let Some(Self::Leaf(deleted_leaf)) = inner.del_child(child_key) else {
-            unreachable!("[bug] a leaf must exist.")
+            return None;
         };
         if let Some(node) = inner.shrink() {
             *self = node;
@@ -217,8 +217,7 @@ where
                             inner.partial.data.copy_within(shift.., 0);
                             let old_node = std::mem::replace(self, Self::new_internal(partial));
                             self.add_child(byte_key, old_node);
-                        } else {
-                            let leaf = inner.indices.min_leaf().expect("[bug] a leaf must exist.");
+                        } else if let Some(leaf) = inner.indices.min_leaf() {
                             let byte_key = {
                                 let leaf_key_bytes = leaf.key.bytes();
                                 let offset = depth + shift;
@@ -245,10 +244,9 @@ where
     }
 
     fn add_child(&mut self, key: u8, child: Self) {
-        let Self::Inner(inner) = self else {
-            unreachable!("[bug] can't add to leaf.");
+        if let Self::Inner(inner) = self {
+            inner.add_child(key, child);
         };
-        inner.add_child(key, child);
     }
 }
 
@@ -263,7 +261,9 @@ where
         key: u8,
         level: usize,
     ) -> std::fmt::Result {
-        debug_print_indentation(f, level)?;
+        for _ in 0..level {
+            write!(f, "  ")?;
+        }
         match self {
             Self::Leaf(leaf) => {
                 writeln!(f, "[{:03}] leaf: {:?} -> {:?}", key, leaf.key, leaf.value)?;
@@ -420,11 +420,7 @@ where
     fn shrink(&mut self) -> Option<Node<K, V, P>> {
         match &mut self.indices {
             InnerIndices::Node4(indices) => {
-                if indices.len() == 1 {
-                    let sub_child_key = indices.byte_at(0);
-                    let mut sub_child = indices
-                        .del_child(sub_child_key)
-                        .expect("[bug] a child must exist.");
+                if let Some((sub_child_key, mut sub_child)) = indices.release() {
                     if let Node::Inner(sub_child) = &mut sub_child {
                         self.partial.push(sub_child_key);
                         self.partial.append(&sub_child.partial);
@@ -469,8 +465,9 @@ where
         }
         // If the prefix is short so we don't have to check a leaf.
         if self.partial.len > P {
-            let leaf = self.indices.min_leaf().expect("[bug] a leaf must exist.");
-            idx += longest_common_prefix(leaf.key.bytes().as_ref(), key, depth + idx);
+            if let Some(leaf) = self.indices.min_leaf() {
+                idx += longest_common_prefix(leaf.key.bytes().as_ref(), key, depth + idx);
+            }
         }
         idx
     }
@@ -711,16 +708,6 @@ where
 
 fn byte_at(bytes: &[u8], pos: usize) -> u8 {
     bytes.get(pos).copied().unwrap_or(0)
-}
-
-fn debug_print_indentation(
-    formatter: &mut std::fmt::Formatter<'_>,
-    level: usize,
-) -> std::fmt::Result {
-    for _ in 0..level {
-        write!(formatter, "  ")?;
-    }
-    Ok(())
 }
 
 #[cfg(test)]

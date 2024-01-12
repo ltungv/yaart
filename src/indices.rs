@@ -143,8 +143,19 @@ impl<'a, T, const N: usize> IntoIterator for &'a Sorted<T, N> {
 }
 
 impl<T, const N: usize> Sorted<T, N> {
-    pub const fn byte_at(&self, idx: usize) -> u8 {
-        self.keys[idx]
+    pub fn release(&mut self) -> Option<(u8, T)> {
+        if self.len != 1 {
+            return None;
+        }
+        let mut tmp = MaybeUninit::uninit();
+        std::mem::swap(&mut tmp, &mut self.children[0]);
+        let key = self.keys[0];
+        // SAFETY: Children at index less than `len` must have been initialized.
+        let child = unsafe { tmp.assume_init() };
+        self.len -= 1;
+        self.keys.rotate_left(1);
+        self.children.rotate_left(1);
+        Some((key, child))
     }
 
     pub fn consume_sorted<const M: usize>(&mut self, other: &mut Sorted<T, M>) {
