@@ -67,7 +67,7 @@ where
             // put the root back into the tree.
             let prev = root.delete(key.bytes().as_ref(), 0);
             self.root = Some(root);
-            return prev;
+            return prev.map(|leaf| leaf.value);
         };
 
         if !leaf.match_key(key.bytes().as_ref()) {
@@ -137,7 +137,7 @@ where
         }
     }
 
-    fn delete(&mut self, key: &[u8], depth: usize) -> Option<V> {
+    fn delete(&mut self, key: &[u8], depth: usize) -> Option<Leaf<K, V>> {
         let Self::Inner(inner) = self else {
             return None;
         };
@@ -166,7 +166,7 @@ where
         if let Some(node) = inner.shrink() {
             *self = node;
         }
-        Some(deleted_leaf.value)
+        Some(*deleted_leaf)
     }
 
     fn insert(&mut self, key: K, value: V, depth: usize) {
