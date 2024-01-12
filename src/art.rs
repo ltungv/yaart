@@ -36,6 +36,7 @@ where
         self.root
             .as_ref()
             .and_then(|node| node.search(key.bytes().as_ref(), 0))
+            .map(|leaf| &leaf.value)
     }
 
     /// Insert the given key-value pair into the tree.
@@ -124,11 +125,11 @@ impl<K, V, const P: usize> Node<K, V, P>
 where
     K: BytesComparable,
 {
-    fn search(&self, key: &[u8], depth: usize) -> Option<&V> {
-        match self {
+    fn search(&self, key: &[u8], depth: usize) -> Option<&Leaf<K, V>> {
+        match &self {
             Self::Leaf(leaf) => {
                 if leaf.match_key(key) {
-                    return Some(&leaf.value);
+                    return Some(leaf);
                 }
                 None
             }
@@ -333,7 +334,7 @@ impl<K, V, const P: usize> Inner<K, V, P>
 where
     K: BytesComparable,
 {
-    fn search(&self, key: &[u8], depth: usize) -> Option<&V> {
+    fn search(&self, key: &[u8], depth: usize) -> Option<&Leaf<K, V>> {
         if !self.partial.match_key(key, depth) {
             return None;
         }
