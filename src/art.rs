@@ -143,35 +143,6 @@ where
         }
     }
 
-    fn delete(&mut self, key: &[u8], depth: usize) -> Option<Self> {
-        let Self::Inner(inner) = self else {
-            return None;
-        };
-        // The key doesn't match the prefix partial.
-        if !inner.partial.match_key(key, depth) {
-            return None;
-        }
-        // Find the child node corresponding to the key.
-        let depth = depth + inner.partial.len;
-        let child_key = byte_at(key, depth);
-        let Some(child) = inner.child_mut(child_key) else {
-            return None;
-        };
-        // Do recursion if the child is an internal node.
-        let Self::Leaf(leaf) = child else {
-            return child.delete(key, depth + 1);
-        };
-        // The leaf's key doesn't match.
-        if !leaf.match_key(key) {
-            return None;
-        }
-        let deleted_node = inner.del_child(child_key);
-        if let Some(node) = inner.shrink() {
-            *self = node;
-        }
-        deleted_node
-    }
-
     fn insert(&mut self, key: K, value: V, depth: usize) {
         match self {
             Self::Leaf(leaf) => {
@@ -245,6 +216,35 @@ where
                 }
             }
         }
+    }
+
+    fn delete(&mut self, key: &[u8], depth: usize) -> Option<Self> {
+        let Self::Inner(inner) = self else {
+            return None;
+        };
+        // The key doesn't match the prefix partial.
+        if !inner.partial.match_key(key, depth) {
+            return None;
+        }
+        // Find the child node corresponding to the key.
+        let depth = depth + inner.partial.len;
+        let child_key = byte_at(key, depth);
+        let Some(child) = inner.child_mut(child_key) else {
+            return None;
+        };
+        // Do recursion if the child is an internal node.
+        let Self::Leaf(leaf) = child else {
+            return child.delete(key, depth + 1);
+        };
+        // The leaf's key doesn't match.
+        if !leaf.match_key(key) {
+            return None;
+        }
+        let deleted_node = inner.del_child(child_key);
+        if let Some(node) = inner.shrink() {
+            *self = node;
+        }
+        deleted_node
     }
 
     fn add_child(&mut self, key: u8, child: Self) {
