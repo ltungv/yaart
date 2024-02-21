@@ -41,6 +41,17 @@ fn make_uninitialized_array<T, const N: usize>() -> [MaybeUninit<T>; N] {
     unsafe { MaybeUninit::uninit().assume_init() }
 }
 
+/// Takes the value from the given `MaybeUninit` leaving it uninitialized.
+///
+/// # Safety
+///
+/// The caller must ensure that the given `MaybeUninit` is initialized.
+unsafe fn take_uninit<T>(maybe_uninit: &mut MaybeUninit<T>) -> T {
+    let mut tmp = MaybeUninit::uninit();
+    std::mem::swap(&mut tmp, maybe_uninit);
+    unsafe { tmp.assume_init() }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::indices::{Direct, Indices, Indirect, Sorted};

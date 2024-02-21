@@ -1,6 +1,6 @@
 use std::mem::MaybeUninit;
 
-use super::{make_uninitialized_array, Indices, Indirect};
+use super::{make_uninitialized_array, take_uninit, Indices, Indirect};
 
 /// A data structure for holding indices in sorted order. This is used when the number of children is
 /// small enough such that we can do search by comparison without affecting the performance.
@@ -37,13 +37,12 @@ impl<T, const N: usize> Indices<T> for Sorted<T, N> {
             self.search_linear(key)
         }
         .map(|idx| {
-            let mut child = MaybeUninit::uninit();
-            std::mem::swap(&mut child, &mut self.children[idx]);
+            // SAFETY: Children at index less than `len` must have been initialized.
+            let child = unsafe { take_uninit(&mut self.children[idx]) };
             self.len -= 1;
             self.keys[idx..].rotate_left(1);
             self.children[idx..].rotate_left(1);
-            // SAFETY: Children at index less than `len` must have been initialized.
-            unsafe { child.assume_init() }
+            child
         })
     }
 
@@ -64,10 +63,11 @@ impl<T, const N: usize> Indices<T> for Sorted<T, N> {
             }
             l
         } else {
-            self.keys[..self.len as usize]
-                .iter()
-                .take_while(|&&k| k < key)
-                .count()
+            let mut i = 0;
+            while i < self.len as usize && self.keys[i] < key {
+                i += 1;
+            }
+            i
         };
         self.len += 1;
         self.keys[idx..].rotate_right(1);
@@ -82,9 +82,9 @@ impl<T, const N: usize> Indices<T> for Sorted<T, N> {
         } else {
             self.search_linear(key)
         }
-        .map(|idx| unsafe {
+        .map(|idx| {
             // SAFETY: Children at index less than `len` must have been initialized.
-            self.children[idx].assume_init_ref()
+            unsafe { self.children[idx].assume_init_ref() }
         })
     }
 
@@ -94,23 +94,23 @@ impl<T, const N: usize> Indices<T> for Sorted<T, N> {
         } else {
             self.search_linear(key)
         }
-        .map(|idx| unsafe {
+        .map(|idx| {
             // SAFETY: Children at index less than `len` must have been initialized.
-            self.children[idx].assume_init_mut()
+            unsafe { self.children[idx].assume_init_mut() }
         })
     }
 
     fn min(&self) -> Option<&T> {
-        self.children[..self.len as usize].first().map(|x| unsafe {
+        self.children[..self.len as usize].first().map(|child| {
             // SAFETY: Children at index less than `len` must have been initialized.
-            x.assume_init_ref()
+            unsafe { child.assume_init_ref() }
         })
     }
 
     fn max(&self) -> Option<&T> {
-        self.children[..self.len as usize].last().map(|x| unsafe {
+        self.children[..self.len as usize].last().map(|child| {
             // SAFETY: Children at index less than `len` must have been initialized.
-            x.assume_init_ref()
+            unsafe { child.assume_init_ref() }
         })
     }
 }
@@ -133,11 +133,9 @@ impl<T, const N: usize> Sorted<T, N> {
         if self.len != 1 {
             return None;
         }
-        let mut tmp = MaybeUninit::uninit();
-        std::mem::swap(&mut tmp, &mut self.children[0]);
         let key = self.keys[0];
         // SAFETY: Children at index less than `len` must have been initialized.
-        let child = unsafe { tmp.assume_init() };
+        let child = unsafe { take_uninit(&mut self.children[0]) };
         self.len -= 1;
         self.keys.rotate_left(1);
         self.children.rotate_left(1);

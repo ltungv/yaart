@@ -1,6 +1,4 @@
-use std::mem::MaybeUninit;
-
-use super::{Indices, Indirect};
+use super::{take_uninit, Indices, Indirect};
 
 #[derive(Debug)]
 pub struct Direct<T> {
@@ -75,10 +73,8 @@ impl<T> Direct<T> {
         for key in 0..256 {
             self.children[key] = other.indices[key].map(|idx| {
                 self.len += 1;
-                let mut tmp = MaybeUninit::uninit();
-                std::mem::swap(&mut tmp, &mut other.children[idx as usize]);
                 // SAFETY: If we found Some(index), the corresponding child must have been initialized.
-                unsafe { tmp.assume_init() }
+                unsafe { take_uninit(&mut other.children[idx as usize]) }
             });
         }
         other.len = 0;

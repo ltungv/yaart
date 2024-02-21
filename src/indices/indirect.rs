@@ -1,6 +1,6 @@
 use std::mem::MaybeUninit;
 
-use super::{make_uninitialized_array, Direct, Indices, Sorted};
+use super::{make_uninitialized_array, take_uninit, Direct, Indices, Sorted};
 
 #[derive(Debug)]
 pub struct Indirect<T, const N: usize> {
@@ -31,10 +31,8 @@ impl<T, const N: usize> Indices<T> for Indirect<T, N> {
     fn del_child(&mut self, key: u8) -> Option<T> {
         self.indices[key as usize].take().map(|idx| {
             self.len -= 1;
-            let mut tmp = MaybeUninit::uninit();
-            std::mem::swap(&mut tmp, &mut self.children[idx as usize]);
             // SAFETY: If we found Some(index), the corresponding child must have been initialized.
-            unsafe { tmp.assume_init() }
+            unsafe { take_uninit(&mut self.children[idx as usize]) }
         })
     }
 
