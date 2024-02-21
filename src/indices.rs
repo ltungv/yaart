@@ -170,11 +170,14 @@ impl<T, const N: usize> Sorted<T, N> {
     pub fn consume_indirect<const M: usize>(&mut self, other: &mut Indirect<T, M>) {
         self.len = 0;
         for key in 0..=255 {
-            if let Some(idx) = other.indices[key as usize] {
-                let pos = self.len as usize;
+            if let Some(idx_old) = other.indices[key as usize] {
+                let idx_new = self.len as usize;
                 self.len += 1;
-                self.keys[pos] = key;
-                std::mem::swap(&mut self.children[pos], &mut other.children[idx as usize]);
+                self.keys[idx_new] = key;
+                std::mem::swap(
+                    &mut self.children[idx_new],
+                    &mut other.children[idx_old as usize],
+                );
             }
         }
         other.len = 0;
