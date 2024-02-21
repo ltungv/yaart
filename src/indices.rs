@@ -1,20 +1,29 @@
 use std::mem::MaybeUninit;
 
+/// A trait implemented by data structure that can be used as indices in an Adaptive Radix Tree.
 pub trait Indices<T> {
+    /// Returns the number of children currently in the indices.
     fn len(&self) -> usize;
 
+    /// Returns `true` if the number of children reaches the maximum capacity.
     fn is_full(&self) -> bool;
 
+    /// Removes the child associated to the given key and returns it.
     fn del_child(&mut self, key: u8) -> Option<T>;
 
+    /// Adds a child associated with the given key.
     fn add_child(&mut self, key: u8, child: T);
 
+    /// Returns a shared reference to the child associated to the given key.
     fn child_ref(&self, key: u8) -> Option<&T>;
 
+    /// Returns a mutable reference to the child associated to the given key.
     fn child_mut(&mut self, key: u8) -> Option<&mut T>;
 
+    /// Returns a shared reference to the child associated with the minimum key.
     fn min(&self) -> Option<&T>;
 
+    /// Returns a shared reference to the child associated with the maximum key.
     fn max(&self) -> Option<&T>;
 }
 
