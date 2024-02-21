@@ -41,7 +41,7 @@ impl<T, const N: usize> Indices<T> for Sorted<T, N> {
     }
 
     fn is_full(&self) -> bool {
-        self.len() >= N
+        self.len as usize >= N
     }
 
     fn del_child(&mut self, key: u8) -> Option<T> {
