@@ -180,10 +180,15 @@ impl<T, const N: usize> Sorted<T, N> {
         other.len = 0;
     }
 
-    fn search_linear(&self, key: u8) -> Option<usize> {
-        self.keys[..self.len as usize]
-            .iter()
-            .position(|&k| k == key)
+    const fn search_linear(&self, key: u8) -> Option<usize> {
+        let mut i = 0;
+        while i < self.len as usize {
+            if self.keys[i] == key {
+                return Some(i);
+            }
+            i += 1;
+        }
+        None
     }
 
     const fn search_binary(&self, key: u8) -> Option<usize> {
