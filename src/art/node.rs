@@ -5,6 +5,8 @@ use crate::{
     BytesComparable,
 };
 
+/// A node in the ART tree, which can be either an inner node or a leaf. Leaf nodes holds data of
+/// key-value pairs, and inner nodes holds indices to other nodes.
 #[derive(Debug)]
 pub enum Node<K, V, const P: usize> {
     Leaf(Box<Leaf<K, V>>),
@@ -12,11 +14,13 @@ pub enum Node<K, V, const P: usize> {
 }
 
 impl<K, V, const P: usize> Node<K, V, P> {
+    /// Create a new leaf node.
     pub fn new_leaf(key: K, value: V) -> Self {
         Self::Leaf(Box::new(Leaf { key, value }))
     }
 
-    fn new_internal(partial: PartialKey<P>) -> Self {
+    /// Create a new inner node.
+    fn new_inner(partial: PartialKey<P>) -> Self {
         Self::Inner(Box::new(Inner::new(partial)))
     }
 }
@@ -63,7 +67,7 @@ where
                 };
                 // Replace the current node, then add the old leaf and new leaf as its children.
                 let new_leaf = Self::new_leaf(key, value);
-                let old_leaf = std::mem::replace(self, Self::new_internal(partial));
+                let old_leaf = std::mem::replace(self, Self::new_inner(partial));
                 self.add_child(k_new, new_leaf);
                 self.add_child(k_old, old_leaf);
             }
@@ -84,7 +88,7 @@ where
                             let byte_key = byte_at(&inner.partial.data, prefix_diff);
                             inner.partial.len -= shift;
                             inner.partial.data.copy_within(shift.., 0);
-                            let old_node = std::mem::replace(self, Self::new_internal(partial));
+                            let old_node = std::mem::replace(self, Self::new_inner(partial));
                             self.add_child(byte_key, old_node);
                         } else if let Some(leaf) = inner.indices.min_leaf_recursive() {
                             let byte_key = {
@@ -97,7 +101,7 @@ where
                                 );
                                 byte_at(leaf_key_bytes.as_ref(), depth + prefix_diff)
                             };
-                            let old_node = std::mem::replace(self, Self::new_internal(partial));
+                            let old_node = std::mem::replace(self, Self::new_inner(partial));
                             self.add_child(byte_key, old_node);
                         }
                         let leaf = Self::new_leaf(key, value);
@@ -274,7 +278,7 @@ where
         let Some(child) = self.child_mut(child_key) else {
             return None;
         };
-        // Do recursion if the child is an internal node.
+        // Do recursion if the child is an inner node.
         let Node::Leaf(leaf) = child else {
             return child.delete(key, depth + 1);
         };

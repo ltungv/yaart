@@ -65,7 +65,7 @@ where
 
         // Extract the leaf to check if the keys match.
         let Node::Leaf(leaf) = root else {
-            // If the root is an internal node, recursively delete the key from it. Once finished,
+            // If the root is an inner node, recursively delete the key from it. Once finished,
             // put the root back into the tree.
             let prev = root.delete(key.bytes().as_ref(), 0).and_then(|node| {
                 if let Node::Leaf(leaf) = node {
