@@ -148,53 +148,51 @@ where
     }
 }
 
-impl<K, V, const P: usize> Node<K, V, P>
+pub fn debug_print<K, V, const P: usize>(
+    f: &mut std::fmt::Formatter<'_>,
+    node: &Node<K, V, P>,
+    key: u8,
+    level: usize,
+) -> std::fmt::Result
 where
     K: std::fmt::Debug,
     V: std::fmt::Debug,
 {
-    pub fn debug_print(
-        &self,
-        f: &mut std::fmt::Formatter<'_>,
-        key: u8,
-        level: usize,
-    ) -> std::fmt::Result {
-        for _ in 0..level {
-            write!(f, "  ")?;
-        }
-        match self {
-            Self::Leaf(leaf) => {
-                writeln!(f, "[{:03}] leaf: {:?} -> {:?}", key, leaf.key, leaf.value)?;
-            }
-            Self::Inner(inner) => match &inner.indices {
-                InnerIndices::Node4(indices) => {
-                    writeln!(f, "[{:03}] node4 {:?}", key, inner.partial)?;
-                    for (key, child) in indices {
-                        child.debug_print(f, key, level + 1)?;
-                    }
-                }
-                InnerIndices::Node16(indices) => {
-                    writeln!(f, "[{:03}] node16 {:?}", key, inner.partial)?;
-                    for (key, child) in indices {
-                        child.debug_print(f, key, level + 1)?;
-                    }
-                }
-                InnerIndices::Node48(indices) => {
-                    writeln!(f, "[{:03}] node48 {:?}", key, inner.partial)?;
-                    for (key, child) in indices {
-                        child.debug_print(f, key, level + 1)?;
-                    }
-                }
-                InnerIndices::Node256(indices) => {
-                    writeln!(f, "[{:03}] node256 {:?}", key, inner.partial)?;
-                    for (key, child) in indices {
-                        child.debug_print(f, key, level + 1)?;
-                    }
-                }
-            },
-        }
-        Ok(())
+    for _ in 0..level {
+        write!(f, "  ")?;
     }
+    match node {
+        Node::Leaf(leaf) => {
+            writeln!(f, "[{:03}] leaf: {:?} -> {:?}", key, leaf.key, leaf.value)?;
+        }
+        Node::Inner(inner) => match &inner.indices {
+            InnerIndices::Node4(indices) => {
+                writeln!(f, "[{:03}] node4 {:?}", key, inner.partial)?;
+                for (key, child) in indices {
+                    debug_print(f, child, key, level + 1)?;
+                }
+            }
+            InnerIndices::Node16(indices) => {
+                writeln!(f, "[{:03}] node16 {:?}", key, inner.partial)?;
+                for (key, child) in indices {
+                    debug_print(f, child, key, level + 1)?;
+                }
+            }
+            InnerIndices::Node48(indices) => {
+                writeln!(f, "[{:03}] node48 {:?}", key, inner.partial)?;
+                for (key, child) in indices {
+                    debug_print(f, child, key, level + 1)?;
+                }
+            }
+            InnerIndices::Node256(indices) => {
+                writeln!(f, "[{:03}] node256 {:?}", key, inner.partial)?;
+                for (key, child) in indices {
+                    debug_print(f, child, key, level + 1)?;
+                }
+            }
+        },
+    }
+    Ok(())
 }
 
 /// Count the number of matching elements at the beginning of two slices.

@@ -4,7 +4,7 @@ mod node;
 
 use std::borrow::Borrow;
 
-use self::node::Node;
+use self::node::{debug_print, Node};
 
 /// An adaptive radix tree.
 #[derive(Default)]
@@ -18,10 +18,11 @@ where
     V: std::fmt::Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Some(root) = &self.root else {
-            return writeln!(f, "empty");
-        };
-        root.debug_print(f, 0, 0)
+        if let Some(root) = &self.root {
+            debug_print(f, root, 0, 0)
+        } else {
+            writeln!(f, "empty")
+        }
     }
 }
 
@@ -44,11 +45,10 @@ where
     /// Insert the given key-value pair into the tree.
     pub fn insert(&mut self, key: K, value: V) {
         if let Some(ref mut root) = self.root {
-            // Recursively insert the key-value pair into the tree.
-            return root.insert(key, value, 0);
+            root.insert(key, value, 0);
+        } else {
+            self.root = Some(Node::new_leaf(key, value));
         }
-        // Simply create a new leaf to replace the current root.
-        self.root = Some(Node::new_leaf(key, value));
     }
 
     /// Delete the value associated with the given key.
@@ -57,16 +57,12 @@ where
         K: Borrow<Q>,
         Q: BytesComparable + ?Sized,
     {
-        // Take the root node out so we can easily work with it.
         let Some(mut root) = self.root.take() else {
-            // Stop if the tree is empty.
+            // Tree is empty.
             return None;
         };
 
-        // Extract the leaf to check if the keys match.
         let Node::Leaf(leaf) = root else {
-            // If the root is an inner node, recursively delete the key from it. Once finished,
-            // put the root back into the tree.
             let prev = root.delete(key.bytes().as_ref(), 0).and_then(|node| {
                 if let Node::Leaf(leaf) = node {
                     Some(leaf.value)
