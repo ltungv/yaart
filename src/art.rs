@@ -6,11 +6,11 @@ use crate::indices::{Direct, Indices, Indirect, Sorted};
 
 /// An adaptive radix tree.
 #[derive(Default)]
-pub struct Tree<K, V> {
-    root: Option<Node<K, V, 8>>,
+pub struct Tree<K, V, const N: usize = 10> {
+    root: Option<Node<K, V, N>>,
 }
 
-impl<K, V> std::fmt::Debug for Tree<K, V>
+impl<K, V, const N: usize> std::fmt::Debug for Tree<K, V, N>
 where
     K: std::fmt::Debug,
     V: std::fmt::Debug,
@@ -23,7 +23,7 @@ where
     }
 }
 
-impl<K, V> Tree<K, V>
+impl<K, V, const N: usize> Tree<K, V, N>
 where
     K: BytesComparable,
 {
@@ -114,7 +114,7 @@ where
 #[derive(Debug)]
 enum Node<K, V, const P: usize> {
     Leaf(Box<Leaf<K, V>>),
-    Inner(Inner<K, V, P>),
+    Inner(Box<Inner<K, V, P>>),
 }
 
 impl<K, V, const P: usize> Node<K, V, P> {
@@ -123,7 +123,7 @@ impl<K, V, const P: usize> Node<K, V, P> {
     }
 
     fn new_internal(partial: PartialKey<P>) -> Self {
-        Self::Inner(Inner::new(partial))
+        Self::Inner(Box::new(Inner::new(partial)))
     }
 }
 
@@ -275,25 +275,25 @@ where
             Self::Inner(inner) => match &inner.indices {
                 InnerIndices::Node4(indices) => {
                     writeln!(f, "[{:03}] node4 {:?}", key, inner.partial)?;
-                    for (key, child) in indices.as_ref() {
+                    for (key, child) in indices {
                         child.debug_print_node(f, key, level + 1)?;
                     }
                 }
                 InnerIndices::Node16(indices) => {
                     writeln!(f, "[{:03}] node16 {:?}", key, inner.partial)?;
-                    for (key, child) in indices.as_ref() {
+                    for (key, child) in indices {
                         child.debug_print_node(f, key, level + 1)?;
                     }
                 }
                 InnerIndices::Node48(indices) => {
                     writeln!(f, "[{:03}] node48 {:?}", key, inner.partial)?;
-                    for (key, child) in indices.as_ref() {
+                    for (key, child) in indices {
                         child.debug_print_node(f, key, level + 1)?;
                     }
                 }
                 InnerIndices::Node256(indices) => {
                     writeln!(f, "[{:03}] node256 {:?}", key, inner.partial)?;
-                    for (key, child) in indices.as_ref() {
+                    for (key, child) in indices {
                         child.debug_print_node(f, key, level + 1)?;
                     }
                 }
@@ -328,7 +328,7 @@ impl<K, V, const P: usize> Inner<K, V, P> {
     fn new(partial: PartialKey<P>) -> Self {
         Self {
             partial,
-            indices: InnerIndices::Node4(Box::default()),
+            indices: InnerIndices::Node4(Sorted::default()),
         }
     }
 }
@@ -400,21 +400,21 @@ where
                 if indices.is_full() {
                     let mut new_indices = Sorted::<Node<K, V, P>, 16>::default();
                     new_indices.consume_sorted(indices);
-                    self.indices = InnerIndices::Node16(Box::new(new_indices));
+                    self.indices = InnerIndices::Node16(new_indices);
                 }
             }
             InnerIndices::Node16(indices) => {
                 if indices.is_full() {
                     let mut new_indices = Indirect::<Node<K, V, P>, 48>::default();
                     new_indices.consume_sorted(indices);
-                    self.indices = InnerIndices::Node48(Box::new(new_indices));
+                    self.indices = InnerIndices::Node48(new_indices);
                 }
             }
             InnerIndices::Node48(indices) => {
                 if indices.is_full() {
                     let mut new_indices = Direct::<Node<K, V, P>>::default();
                     new_indices.consume_indirect(indices);
-                    self.indices = InnerIndices::Node256(Box::new(new_indices));
+                    self.indices = InnerIndices::Node256(new_indices);
                 }
             }
             InnerIndices::Node256(_) => {}
@@ -437,21 +437,21 @@ where
                 if indices.len() < 4 {
                     let mut new_indices = Sorted::<Node<K, V, P>, 4>::default();
                     new_indices.consume_sorted(indices);
-                    self.indices = InnerIndices::Node4(Box::new(new_indices));
+                    self.indices = InnerIndices::Node4(new_indices);
                 }
             }
             InnerIndices::Node48(indices) => {
                 if indices.len() < 16 {
                     let mut new_indices = Sorted::<Node<K, V, P>, 16>::default();
                     new_indices.consume_indirect(indices);
-                    self.indices = InnerIndices::Node16(Box::new(new_indices));
+                    self.indices = InnerIndices::Node16(new_indices);
                 }
             }
             InnerIndices::Node256(indices) => {
                 if indices.len() < 48 {
                     let mut new_indices = Indirect::<Node<K, V, P>, 48>::default();
                     new_indices.consume_direct(indices);
-                    self.indices = InnerIndices::Node48(Box::new(new_indices));
+                    self.indices = InnerIndices::Node48(new_indices);
                 }
             }
         }
@@ -479,10 +479,10 @@ where
 
 #[derive(Debug)]
 enum InnerIndices<K, V, const P: usize> {
-    Node4(Box<Sorted<Node<K, V, P>, 4>>),
-    Node16(Box<Sorted<Node<K, V, P>, 16>>),
-    Node48(Box<Indirect<Node<K, V, P>, 48>>),
-    Node256(Box<Direct<Node<K, V, P>>>),
+    Node4(Sorted<Node<K, V, P>, 4>),
+    Node16(Sorted<Node<K, V, P>, 16>),
+    Node48(Indirect<Node<K, V, P>, 48>),
+    Node256(Direct<Node<K, V, P>>),
 }
 
 impl<K, V, const P: usize> InnerIndices<K, V, P> {
@@ -609,8 +609,7 @@ impl BytesComparable for i8 {
     type Target<'a> = [u8; 1];
 
     fn bytes(&self) -> Self::Target<'static> {
-        let flipped = self ^ (1 << 7);
-        flipped.to_be_bytes()
+        (self ^ (1 << (Self::BITS - 1))).to_be_bytes()
     }
 }
 
@@ -618,8 +617,7 @@ impl BytesComparable for i16 {
     type Target<'a> = [u8; 2];
 
     fn bytes(&self) -> Self::Target<'static> {
-        let flipped = self ^ (1 << 15);
-        flipped.to_be_bytes()
+        (self ^ (1 << (Self::BITS - 1))).to_be_bytes()
     }
 }
 
@@ -627,8 +625,7 @@ impl BytesComparable for i32 {
     type Target<'a> = [u8; 4];
 
     fn bytes(&self) -> Self::Target<'static> {
-        let flipped = self ^ (1 << 31);
-        flipped.to_be_bytes()
+        (self ^ (1 << (Self::BITS - 1))).to_be_bytes()
     }
 }
 
@@ -636,8 +633,7 @@ impl BytesComparable for i64 {
     type Target<'a> = [u8; 8];
 
     fn bytes(&self) -> Self::Target<'static> {
-        let flipped = self ^ (1 << 63);
-        flipped.to_be_bytes()
+        (self ^ (1 << (Self::BITS - 1))).to_be_bytes()
     }
 }
 
@@ -645,8 +641,7 @@ impl BytesComparable for i128 {
     type Target<'a> = [u8; 16];
 
     fn bytes(&self) -> Self::Target<'static> {
-        let flipped = self ^ (1 << 127);
-        flipped.to_be_bytes()
+        (self ^ (1 << (Self::BITS - 1))).to_be_bytes()
     }
 }
 
@@ -764,7 +759,7 @@ mod tests {
     fn test_all_operations() {
         let keys = get_key_samples(0..256, 256, 64);
         let mut rng = rand::thread_rng();
-        let mut tree = Tree::default();
+        let mut tree = Tree::<_, _, 10>::default();
         let mut hash = HashMap::new();
 
         for key in keys {
