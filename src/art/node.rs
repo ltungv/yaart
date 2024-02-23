@@ -5,8 +5,8 @@ use crate::{
     BytesComparable,
 };
 
-/// A node in the ART tree, which can be either an inner node or a leaf. Leaf nodes holds data of
-/// key-value pairs, and inner nodes holds indices to other nodes.
+/// A node in the ART tree, which can be either an inner node or a leaf node. Leaf nodes hold data of
+/// key-value pairs, and inner nodes holds indices to its children.
 #[derive(Debug)]
 pub enum Node<K, V, const P: usize> {
     Leaf(Box<Leaf<K, V>>),
@@ -29,35 +29,53 @@ impl<K, V, const P: usize> Node<K, V, P>
 where
     K: BytesComparable,
 {
+    /// Finds the leaf node that matches the given key.
+    ///
+    /// # Arguments
+    ///
+    /// - `key`: The key to search for.
+    /// - `depth`: The number of bytes in the key to skip. This number increases as we go deeper into the tree
+    /// and depends on the length of prefixes along the path.
     pub fn search(&self, key: &[u8], depth: usize) -> Option<&Leaf<K, V>> {
         match &self {
             Self::Leaf(leaf) => {
-                if leaf.match_key(key) {
-                    return Some(leaf);
+                if !leaf.match_key(key) {
+                    return None;
                 }
-                None
+                Some(leaf)
             }
             Self::Inner(inner) => inner.search_recursive(key, depth),
         }
     }
 
+    /// Inserts the given key-value pair into the node.
+    ///
+    /// # Arguments
+    ///
+    /// - `key`: The key to insert.
+    /// - `value`: The value to insert.
+    /// - `depth`: The number of bytes in the key to skip. This number increases as we go deeper into the tree
+    /// and depends on the length of prefixes along the path.
     pub fn insert(&mut self, key: K, value: V, depth: usize) {
         match self {
             Self::Leaf(leaf) => {
+                // Here we create a scope to avoid borrowing `key` for too long in order to move it into the new leaf.
                 let (partial, k_new, k_old) = {
                     let new_key_bytes = key.bytes();
+                    // If the leaf's key matches the new key, then update it's value and return early.
                     if leaf.match_key(new_key_bytes.as_ref()) {
-                        // Inserting an existing key.
                         leaf.value = value;
                         return;
                     }
-                    // Determines the partial key for the new node and the keys for the two children.
+                    // Calculates the common prefix length between the new key and the leaf's key.
                     let old_key_bytes = leaf.key.bytes();
                     let prefix_len = longest_common_prefix(
                         new_key_bytes.as_ref(),
                         old_key_bytes.as_ref(),
                         depth,
                     );
+                    // Creates a new partial key from the common prefix. Then gets the new and old byte keys of where
+                    // the leaves are placed within the inner node.
                     let new_depth = depth + prefix_len;
                     (
                         PartialKey::new(&new_key_bytes.as_ref()[depth..], prefix_len),
@@ -72,46 +90,50 @@ where
                 self.add_child(k_old, old_leaf);
             }
             Self::Inner(inner) => {
-                if inner.partial.len > 0 {
-                    let (prefix_diff, byte_key) = {
-                        let key_bytes = key.bytes();
-                        let prefix_diff = inner.prefix_mismatch(key_bytes.as_ref(), depth);
-                        (
-                            prefix_diff,
-                            byte_at(key_bytes.as_ref(), depth + prefix_diff),
-                        )
-                    };
-                    if prefix_diff < inner.partial.len {
-                        let shift = prefix_diff + 1;
-                        let partial = PartialKey::new(&inner.partial.data, prefix_diff);
-                        if inner.partial.len <= P {
-                            let byte_key = byte_at(&inner.partial.data, prefix_diff);
-                            inner.partial.len -= shift;
-                            inner.partial.data.copy_within(shift.., 0);
-                            let old_node = std::mem::replace(self, Self::new_inner(partial));
-                            self.add_child(byte_key, old_node);
-                        } else if let Some(leaf) = inner.indices.min_leaf_recursive() {
-                            let byte_key = {
-                                let leaf_key_bytes = leaf.key.bytes();
-                                let offset = depth + shift;
-                                let partial_len = min(P, inner.partial.len);
-                                inner.partial.len -= shift;
-                                inner.partial.data[..partial_len].copy_from_slice(
-                                    &leaf_key_bytes.as_ref()[offset..offset + partial_len],
-                                );
-                                byte_at(leaf_key_bytes.as_ref(), depth + prefix_diff)
-                            };
-                            let old_node = std::mem::replace(self, Self::new_inner(partial));
-                            self.add_child(byte_key, old_node);
-                        }
-                        let leaf = Self::new_leaf(key, value);
-                        self.add_child(byte_key, leaf);
-                    } else {
-                        inner.insert_recursive(key, value, depth + inner.partial.len);
-                    }
-                } else {
-                    inner.insert_recursive(key, value, depth);
+                // Inner node has no prefix, insert recursively into it without any checks or modifications.
+                if inner.partial.len == 0 {
+                    return inner.insert_recursive(key, value, depth);
                 }
+                // Find the index at which the new key differs from the inner node's partial key.
+                let (prefix_diff, new_byte_key) = {
+                    let key_bytes = key.bytes();
+                    let prefix_diff = inner.first_mismatch_index(key_bytes.as_ref(), depth);
+                    let byte_key = byte_at(key_bytes.as_ref(), depth + prefix_diff);
+                    (prefix_diff, byte_key)
+                };
+                // The index at which the new key differs is not covered by the current partial key,
+                // so we insert recursively.
+                if prefix_diff >= inner.partial.len {
+                    return inner.insert_recursive(key, value, depth + inner.partial.len);
+                }
+                // At this point, we found a difference between the new key and the inner node's partial key.
+                let shift = prefix_diff + 1;
+                let partial = PartialKey::new(&inner.partial.data, prefix_diff);
+                if inner.partial.len <= P {
+                    // The mismatched byte is contained within the partial key data. We modify the inner node
+                    // partial key by skipping the common prefix plus the first byte where the keys differ.
+                    // A new inner node is created, and we add the old inner node as its child.
+                    let byte_key = byte_at(&inner.partial.data, prefix_diff);
+                    inner.partial.len -= shift;
+                    inner.partial.data.copy_within(shift.., 0);
+                    let old_node = std::mem::replace(self, Self::new_inner(partial));
+                    self.add_child(byte_key, old_node)
+                } else if let Some(leaf) = inner.indices.min_leaf_recursive() {
+                    // The mismatched byte is contained outside of the partial key data. We modify the inner node
+                    // by fill its partial key data with part of the common prefix copied from the minimum leaf's key.
+                    // A new inner node is created, and we add the old inner node as its child.
+                    let byte_key = {
+                        let leaf_key_bytes = leaf.key.bytes();
+                        let offset = depth + shift;
+                        inner.partial.len -= shift;
+                        inner.partial.data[..P]
+                            .copy_from_slice(&leaf_key_bytes.as_ref()[offset..offset + P]);
+                        byte_at(leaf_key_bytes.as_ref(), depth + prefix_diff)
+                    };
+                    let old_node = std::mem::replace(self, Self::new_inner(partial));
+                    self.add_child(byte_key, old_node);
+                }
+                self.add_child(new_byte_key, Self::new_leaf(key, value));
             }
         }
     }
@@ -142,6 +164,7 @@ where
     }
 
     fn add_child(&mut self, key: u8, child: Self) {
+        // NOTE: Is there a way to avoid this match?
         if let Self::Inner(inner) = self {
             inner.add_child(key, child);
         };
@@ -195,7 +218,7 @@ where
     Ok(())
 }
 
-/// Count the number of matching elements at the beginning of two slices.
+/// Count the number of common elements at the beginning of two slices.
 fn longest_common_prefix<T>(lhs: &[T], rhs: &[T], depth: usize) -> usize
 where
     T: PartialEq,
@@ -207,6 +230,7 @@ where
         .count()
 }
 
+/// Gets the byte at the given position in the slice. If it is out of bounds, then 0 is returned.
 fn byte_at(bytes: &[u8], pos: usize) -> u8 {
     bytes.get(pos).copied().unwrap_or(0)
 }
@@ -221,6 +245,7 @@ impl<K, V> Leaf<K, V>
 where
     K: BytesComparable,
 {
+    /// Check if the key of the leaf exactly matches the given key.
     pub fn match_key(&self, key: &[u8]) -> bool {
         self.key.bytes().as_ref() == key
     }
@@ -258,8 +283,10 @@ where
     fn insert_recursive(&mut self, key: K, value: V, depth: usize) {
         let byte_key = byte_at(key.bytes().as_ref(), depth);
         if let Some(child) = self.child_mut(byte_key) {
+            // Found a child so we recursively insert into it.
             child.insert(key, value, depth + 1);
         } else {
+            // No child found so we insert a new leaf into the current node.
             let leaf = Node::new_leaf(key, value);
             self.add_child(byte_key, leaf);
         }
@@ -277,14 +304,22 @@ where
             return None;
         };
         // Do recursion if the child is an inner node.
-        let Node::Leaf(leaf) = child else {
-            return child.delete(key, depth + 1);
-        };
-        // The leaf's key doesn't match.
-        if !leaf.match_key(key) {
-            return None;
+        match child {
+            Node::Leaf(leaf) => {
+                // The leaf's key doesn't match.
+                if !leaf.match_key(key) {
+                    return None;
+                }
+                self.del_child(child_key)
+            }
+            Node::Inner(inner) => {
+                let deleted = inner.delete_recursive(key, depth + 1);
+                if let Some(node) = inner.shrink() {
+                    *child = node;
+                }
+                deleted
+            }
         }
-        self.del_child(child_key)
     }
 
     fn add_child(&mut self, key: u8, child: Node<K, V, P>) {
@@ -388,7 +423,7 @@ where
         None
     }
 
-    fn prefix_mismatch(&self, key: &[u8], depth: usize) -> usize {
+    fn first_mismatch_index(&self, key: &[u8], depth: usize) -> usize {
         let len = min(P, self.partial.len);
         let mut idx = 0;
         for (l, r) in self.partial.data[..len].iter().zip(key[depth..].iter()) {
@@ -397,8 +432,9 @@ where
             }
             idx += 1;
         }
-        // If the prefix is short so we don't have to check a leaf.
         if self.partial.len > P {
+            // Prefix is longer than what we've checked, find a leaf. The minimum leaf is
+            // guaranteed to contains the longest common prefix of the current partial key.
             if let Some(leaf) = self.indices.min_leaf_recursive() {
                 idx += longest_common_prefix(leaf.key.bytes().as_ref(), key, depth + idx);
             }
@@ -443,13 +479,20 @@ impl<K, V, const P: usize> InnerIndices<K, V, P> {
     }
 }
 
+/// A partial key is used to support path compression. Only a part of the prefix that matches the
+/// original key is stored in the inner node.
 #[derive(Debug, Clone)]
 struct PartialKey<const N: usize> {
+    /// The length of the prefix that matches the original key, which can be longer than the length
+    /// of the data array.
     len: usize,
+    /// The data array that holds the partial prefix.
     data: [u8; N],
 }
 
 impl<const N: usize> PartialKey<N> {
+    /// Creates a new partial key from the given key and prefix length. We only copy at most N
+    /// bytes from the key to fill the data array.
     fn new(key: &[u8], len: usize) -> Self {
         let partial_len = min(N, len);
         let mut data = [0; N];
@@ -457,6 +500,8 @@ impl<const N: usize> PartialKey<N> {
         Self { len, data }
     }
 
+    /// Pushes a single byte into the partial key. If the data array is full, then the byte will
+    /// not be written into it. In that case, only the length will be incremented.
     fn push(&mut self, char: u8) {
         if self.len < N {
             self.data[self.len] = char;
@@ -464,6 +509,8 @@ impl<const N: usize> PartialKey<N> {
         self.len += 1;
     }
 
+    /// Appends the data from another partial key into this one. We only copy enough bytes to fill
+    /// the data array. The length will be incremented by the length of the other partial key.
     fn append(&mut self, other: &Self) {
         if self.len < N {
             let len = min(other.len, N - self.len);
@@ -472,6 +519,7 @@ impl<const N: usize> PartialKey<N> {
         self.len += other.len;
     }
 
+    /// Returns true if the partil key matches the given key . We only check at most N bytes.
     fn match_key(&self, key: &[u8], depth: usize) -> bool {
         let partial_len = min(N, self.len);
         self.data[..partial_len]

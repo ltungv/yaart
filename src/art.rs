@@ -75,11 +75,11 @@ where
             return prev;
         };
         // If the key matches, return the leaf's value. Otherwise, put it back as the root.
-        if leaf.match_key(key.bytes().as_ref()) {
-            return Some(leaf.value);
+        if !leaf.match_key(key.bytes().as_ref()) {
+            self.root = Some(Node::Leaf(leaf));
+            return None;
         };
-        self.root = Some(Node::Leaf(leaf));
-        None
+        Some(leaf.value)
     }
 
     /// Find the minimum key-value pair in the tree.
