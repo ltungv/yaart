@@ -9,19 +9,19 @@ use crate::{
 /// key-value pairs, and inner nodes holds indices to its children.
 #[derive(Debug)]
 pub enum Node<K, V, const P: usize> {
-    Leaf(Box<Leaf<K, V>>),
-    Inner(Box<Inner<K, V, P>>),
+    Leaf(Leaf<K, V>),
+    Inner(Inner<K, V, P>),
 }
 
 impl<K, V, const P: usize> Node<K, V, P> {
     /// Create a new leaf node.
     pub fn new_leaf(key: K, value: V) -> Self {
-        Self::Leaf(Box::new(Leaf { key, value }))
+        Self::Leaf(Leaf { key, value })
     }
 
     /// Create a new inner node.
     fn new_inner(partial: PartialKey<P>) -> Self {
-        Self::Inner(Box::new(Inner::new(partial)))
+        Self::Inner(Inner::new(partial))
     }
 }
 
@@ -138,7 +138,7 @@ where
         }
     }
 
-    pub fn delete(&mut self, key: &[u8], depth: usize) -> Option<Self> {
+    pub fn delete(&mut self, key: &[u8], depth: usize) -> Option<Leaf<K, V>> {
         let Self::Inner(inner) = self else {
             return None;
         };
@@ -188,7 +188,7 @@ where
         Node::Leaf(leaf) => {
             writeln!(f, "[{:03}] leaf: {:?} -> {:?}", key, leaf.key, leaf.value)?;
         }
-        Node::Inner(inner) => match &inner.indices {
+        Node::Inner(inner) => match inner.indices.as_ref() {
             InnerIndices::Node4(indices) => {
                 writeln!(f, "[{:03}] node4 {:?}", key, inner.partial)?;
                 for (key, child) in indices {
@@ -254,14 +254,14 @@ where
 #[derive(Debug)]
 pub struct Inner<K, V, const P: usize> {
     partial: PartialKey<P>,
-    indices: InnerIndices<K, V, P>,
+    indices: Box<InnerIndices<K, V, P>>,
 }
 
 impl<K, V, const P: usize> Inner<K, V, P> {
     fn new(partial: PartialKey<P>) -> Self {
         Self {
             partial,
-            indices: InnerIndices::Node4(Sorted::default()),
+            indices: Box::new(InnerIndices::Node4(Sorted::default())),
         }
     }
 }
@@ -292,7 +292,7 @@ where
         }
     }
 
-    fn delete_recursive(&mut self, key: &[u8], depth: usize) -> Option<Node<K, V, P>> {
+    fn delete_recursive(&mut self, key: &[u8], depth: usize) -> Option<Leaf<K, V>> {
         // The key doesn't match the prefix partial.
         if !self.partial.match_key(key, depth) {
             return None;
@@ -310,7 +310,13 @@ where
                 if !leaf.match_key(key) {
                     return None;
                 }
-                self.del_child(child_key)
+                self.del_child(child_key).and_then(|child| {
+                    if let Node::Leaf(leaf) = child {
+                        Some(leaf)
+                    } else {
+                        None
+                    }
+                })
             }
             Node::Inner(inner) => {
                 let deleted = inner.delete_recursive(key, depth + 1);
@@ -324,7 +330,7 @@ where
 
     fn add_child(&mut self, key: u8, child: Node<K, V, P>) {
         self.grow();
-        match &mut self.indices {
+        match self.indices.as_mut() {
             InnerIndices::Node4(indices) => indices.add_child(key, child),
             InnerIndices::Node16(indices) => indices.add_child(key, child),
             InnerIndices::Node48(indices) => indices.add_child(key, child),
@@ -333,7 +339,7 @@ where
     }
 
     fn del_child(&mut self, key: u8) -> Option<Node<K, V, P>> {
-        match &mut self.indices {
+        match self.indices.as_mut() {
             InnerIndices::Node4(indices) => indices.del_child(key),
             InnerIndices::Node16(indices) => indices.del_child(key),
             InnerIndices::Node48(indices) => indices.del_child(key),
@@ -342,7 +348,7 @@ where
     }
 
     fn child_ref(&self, key: u8) -> Option<&Node<K, V, P>> {
-        match &self.indices {
+        match self.indices.as_ref() {
             InnerIndices::Node4(indices) => indices.child_ref(key),
             InnerIndices::Node16(indices) => indices.child_ref(key),
             InnerIndices::Node48(indices) => indices.child_ref(key),
@@ -351,7 +357,7 @@ where
     }
 
     fn child_mut(&mut self, key: u8) -> Option<&mut Node<K, V, P>> {
-        match &mut self.indices {
+        match self.indices.as_mut() {
             InnerIndices::Node4(indices) => indices.child_mut(key),
             InnerIndices::Node16(indices) => indices.child_mut(key),
             InnerIndices::Node48(indices) => indices.child_mut(key),
@@ -360,26 +366,26 @@ where
     }
 
     fn grow(&mut self) {
-        match &mut self.indices {
+        match self.indices.as_mut() {
             InnerIndices::Node4(indices) => {
                 if indices.is_full() {
                     let mut new_indices = Sorted::<Node<K, V, P>, 16>::default();
                     new_indices.consume_sorted(indices);
-                    self.indices = InnerIndices::Node16(new_indices);
+                    self.indices = Box::new(InnerIndices::Node16(new_indices));
                 }
             }
             InnerIndices::Node16(indices) => {
                 if indices.is_full() {
                     let mut new_indices = Indirect::<Node<K, V, P>, 48>::default();
                     new_indices.consume_sorted(indices);
-                    self.indices = InnerIndices::Node48(new_indices);
+                    self.indices = Box::new(InnerIndices::Node48(new_indices));
                 }
             }
             InnerIndices::Node48(indices) => {
                 if indices.is_full() {
                     let mut new_indices = Direct::<Node<K, V, P>>::default();
                     new_indices.consume_indirect(indices);
-                    self.indices = InnerIndices::Node256(new_indices);
+                    self.indices = Box::new(InnerIndices::Node256(new_indices));
                 }
             }
             InnerIndices::Node256(_) => {}
@@ -387,7 +393,7 @@ where
     }
 
     fn shrink(&mut self) -> Option<Node<K, V, P>> {
-        match &mut self.indices {
+        match self.indices.as_mut() {
             InnerIndices::Node4(indices) => {
                 if let Some((sub_child_key, mut sub_child)) = indices.release() {
                     if let Node::Inner(sub_child) = &mut sub_child {
@@ -402,21 +408,21 @@ where
                 if indices.len() < 4 {
                     let mut new_indices = Sorted::<Node<K, V, P>, 4>::default();
                     new_indices.consume_sorted(indices);
-                    self.indices = InnerIndices::Node4(new_indices);
+                    self.indices = Box::new(InnerIndices::Node4(new_indices));
                 }
             }
             InnerIndices::Node48(indices) => {
                 if indices.len() < 16 {
                     let mut new_indices = Sorted::<Node<K, V, P>, 16>::default();
                     new_indices.consume_indirect(indices);
-                    self.indices = InnerIndices::Node16(new_indices);
+                    self.indices = Box::new(InnerIndices::Node16(new_indices));
                 }
             }
             InnerIndices::Node256(indices) => {
                 if indices.len() < 48 {
                     let mut new_indices = Indirect::<Node<K, V, P>, 48>::default();
                     new_indices.consume_direct(indices);
-                    self.indices = InnerIndices::Node48(new_indices);
+                    self.indices = Box::new(InnerIndices::Node48(new_indices));
                 }
             }
         }
@@ -460,7 +466,7 @@ impl<K, V, const P: usize> InnerIndices<K, V, P> {
             Self::Node256(indices) => indices.min(),
         }
         .and_then(|child| match child {
-            Node::Leaf(leaf) => Some(leaf.as_ref()),
+            Node::Leaf(leaf) => Some(leaf),
             Node::Inner(inner) => inner.indices.min_leaf_recursive(),
         })
     }
@@ -473,7 +479,7 @@ impl<K, V, const P: usize> InnerIndices<K, V, P> {
             Self::Node256(indices) => indices.max(),
         }
         .and_then(|child| match child {
-            Node::Leaf(leaf) => Some(leaf.as_ref()),
+            Node::Leaf(leaf) => Some(leaf),
             Node::Inner(inner) => inner.indices.max_leaf_recursive(),
         })
     }

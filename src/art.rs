@@ -64,15 +64,9 @@ where
         };
         // Handles special case when the root is a leaf. Otherwise, start deleting from within the inner node.
         let Node::Leaf(leaf) = root else {
-            let prev = root.delete(key.bytes().as_ref(), 0).and_then(|node| {
-                if let Node::Leaf(leaf) = node {
-                    Some(leaf.value)
-                } else {
-                    None
-                }
-            });
+            let deleted = root.delete(key.bytes().as_ref(), 0).map(|leaf| leaf.value);
             self.root = Some(root);
-            return prev;
+            return deleted;
         };
         // If the key matches, return the leaf's value. Otherwise, put it back as the root.
         if !leaf.match_key(key.bytes().as_ref()) {
