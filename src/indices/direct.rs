@@ -68,6 +68,8 @@ impl<'a, T> IntoIterator for &'a Direct<T> {
 }
 
 impl<T> Direct<T> {
+    const DEFAULT_CHILD: Option<T> = None;
+
     pub fn consume_indirect<const N: usize>(&mut self, other: &mut Indirect<T, N>) {
         self.len = 0;
         for key in 0..256 {
@@ -100,8 +102,4 @@ impl<'a, T> Iterator for Iter<'a, T> {
         }
         None
     }
-}
-
-impl<T> Direct<T> {
-    const DEFAULT_CHILD: Option<T> = None;
 }
