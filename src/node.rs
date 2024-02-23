@@ -15,7 +15,7 @@ pub enum Node<K, V, const P: usize> {
 
 impl<K, V, const P: usize> Node<K, V, P> {
     /// Create a new leaf node.
-    pub fn new_leaf(key: K, value: V) -> Self {
+    pub const fn new_leaf(key: K, value: V) -> Self {
         Self::Leaf(Leaf { key, value })
     }
 
@@ -117,8 +117,13 @@ where
                     inner.partial.len -= shift;
                     inner.partial.data.copy_within(shift.., 0);
                     let old_node = std::mem::replace(self, Self::new_inner(partial));
-                    self.add_child(byte_key, old_node)
-                } else if let Some(leaf) = inner.indices.min_leaf_recursive() {
+                    self.add_child(byte_key, old_node);
+                } else {
+                    let Some(leaf) = inner.indices.min_leaf_recursive() else {
+                        unreachable!(
+                            "a leaf must exist in the tree if the prefix is longer than the partial key"
+                        )
+                    };
                     // The mismatched byte is contained outside of the partial key data. We modify the inner node
                     // by fill its partial key data with part of the common prefix copied from the minimum leaf's key.
                     // A new inner node is created, and we add the old inner node as its child.
@@ -140,7 +145,7 @@ where
 
     pub fn delete(&mut self, key: &[u8], depth: usize) -> Option<Leaf<K, V>> {
         let Self::Inner(inner) = self else {
-            return None;
+            unreachable!("can not call delete on a leaf node");
         };
         let deleted = inner.delete_recursive(key, depth);
         if let Some(node) = inner.shrink() {
@@ -165,9 +170,10 @@ where
 
     fn add_child(&mut self, key: u8, child: Self) {
         // NOTE: Is there a way to avoid this match?
-        if let Self::Inner(inner) = self {
-            inner.add_child(key, child);
+        let Self::Inner(inner) = self else {
+            unreachable!("can not add child on a leaf node")
         };
+        inner.add_child(key, child);
     }
 }
 
@@ -310,12 +316,11 @@ where
                 if !leaf.match_key(key) {
                     return None;
                 }
-                self.del_child(child_key).and_then(|child| {
-                    if let Node::Leaf(leaf) = child {
-                        Some(leaf)
-                    } else {
-                        None
-                    }
+                self.del_child(child_key).map(|child| {
+                    let Node::Leaf(leaf) = child else {
+                        unreachable!("must be a leaf because we just perform a match above with the same key")
+                    };
+                    leaf
                 })
             }
             Node::Inner(inner) => {
@@ -441,9 +446,12 @@ where
         if self.partial.len > P {
             // Prefix is longer than what we've checked, find a leaf. The minimum leaf is
             // guaranteed to contains the longest common prefix of the current partial key.
-            if let Some(leaf) = self.indices.min_leaf_recursive() {
-                idx += longest_common_prefix(leaf.key.bytes().as_ref(), key, depth + idx);
-            }
+            let Some(leaf) = self.indices.min_leaf_recursive() else {
+                unreachable!(
+                    "a leaf must exist in the tree if the prefix is longer than the partial key"
+                )
+            };
+            idx += longest_common_prefix(leaf.key.bytes().as_ref(), key, depth + idx);
         }
         idx
     }
