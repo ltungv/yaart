@@ -125,8 +125,8 @@ where
                         )
                     };
                     // The mismatched byte is contained outside of the partial key data. We modify the inner node
-                    // by fill its partial key data with part of the common prefix copied from the minimum leaf's key.
-                    // A new inner node is created, and we add the old inner node as its child.
+                    // by filling its partial key data with part of the common prefix copied from the minimum leaf's
+                    // key. A new inner node is created, and we add the old inner node as its child.
                     let byte_key = {
                         let leaf_key_bytes = leaf.key.bytes();
                         let offset = depth + shift;
@@ -533,7 +533,7 @@ impl<const N: usize> PartialKey<N> {
         self.len += other.len;
     }
 
-    /// Returns true if the partil key matches the given key . We only check at most N bytes.
+    /// Returns true if the partial key matches the given key. We only check at most N bytes.
     fn match_key(&self, key: &[u8], depth: usize) -> bool {
         let partial_len = min(N, self.len);
         self.data[..partial_len]
