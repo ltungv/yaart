@@ -1,7 +1,7 @@
 use std::{collections::HashMap, ops::Range};
 
 use rand::{distributions::Alphanumeric, seq::SliceRandom, Rng};
-use yaart::Tree;
+use yaart::ART;
 
 fn get_key_samples(
     prefix_sizes: Range<usize>,
@@ -51,7 +51,7 @@ fn get_key_samples(
 fn main() {
     let keys = get_key_samples(0..8, 1024, 16);
     let mut rng = rand::thread_rng();
-    let mut tree = Tree::<_, _, 10>::default();
+    let mut tree = ART::<_, _, 10>::default();
     let mut hash = HashMap::new();
 
     for key in keys {
