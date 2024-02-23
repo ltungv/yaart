@@ -44,6 +44,8 @@ where
 
     /// Insert the given key-value pair into the tree.
     pub fn insert(&mut self, key: K, value: V) {
+        // Insert into the current root if the tree is not empty. Otherwise,
+        // create a new leaf as the root.
         if let Some(ref mut root) = self.root {
             root.insert(key, value, 0);
         } else {
@@ -58,10 +60,9 @@ where
         Q: BytesComparable + ?Sized,
     {
         let Some(mut root) = self.root.take() else {
-            // Tree is empty.
             return None;
         };
-
+        // Handles special case when the root is a leaf. Otherwise, start deleting from within the inner node.
         let Node::Leaf(leaf) = root else {
             let prev = root.delete(key.bytes().as_ref(), 0).and_then(|node| {
                 if let Node::Leaf(leaf) = node {
@@ -73,15 +74,12 @@ where
             self.root = Some(root);
             return prev;
         };
-
-        if !leaf.match_key(key.bytes().as_ref()) {
-            // If the key doesn't match, put the root back into the tree.
-            self.root = Some(Node::Leaf(leaf));
-            return None;
+        // If the key matches, return the leaf's value. Otherwise, put it back as the root.
+        if leaf.match_key(key.bytes().as_ref()) {
+            return Some(leaf.value);
         };
-
-        // The keys match, so we don't put the root back into the tree and return the value.
-        Some(leaf.value)
+        self.root = Some(Node::Leaf(leaf));
+        None
     }
 
     /// Find the minimum key-value pair in the tree.
