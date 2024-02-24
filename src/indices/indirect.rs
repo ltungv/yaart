@@ -2,11 +2,39 @@ use std::mem::MaybeUninit;
 
 use super::{make_uninitialized_array, take_uninit, Direct, Indices, Sorted};
 
+/// A data structure for holding indices that uses 2 arrays of diffrent sizes to map from byte keys
+/// to their children. A 256-element array is used to map directly from byte keys to indices into a
+/// second array which stores the children.
 #[derive(Debug)]
 pub struct Indirect<T, const N: usize> {
     pub(super) len: u8,
     pub(super) indices: [Option<u8>; 256],
     pub(super) children: [MaybeUninit<T>; N],
+}
+
+impl<T, const N: usize> Indirect<T, N> {
+    /// Moves all children and keys from the given sorted indices to this one.
+    pub fn consume_sorted<const M: usize>(&mut self, other: &mut Sorted<T, M>) {
+        for idx in 0..other.len {
+            let pos = idx as usize;
+            self.indices[other.keys[pos] as usize] = Some(idx);
+            std::mem::swap(&mut self.children[pos], &mut other.children[pos]);
+        }
+        self.len = other.len;
+        other.len = 0;
+    }
+
+    /// Moves all children and keys from the given direct indices to this one.
+    pub fn consume_direct(&mut self, other: &mut Direct<T>) {
+        self.len = 0;
+        for (key, child) in other.children.iter_mut().enumerate() {
+            if let Some(child) = child.take() {
+                self.indices[key] = Some(self.len);
+                self.children[self.len as usize].write(child);
+                self.len += 1;
+            }
+        }
+    }
 }
 
 impl<T, const N: usize> Default for Indirect<T, N> {
@@ -15,6 +43,19 @@ impl<T, const N: usize> Default for Indirect<T, N> {
             len: 0,
             indices: [None; 256],
             children: make_uninitialized_array(),
+        }
+    }
+}
+
+impl<'a, T, const N: usize> IntoIterator for &'a Indirect<T, N> {
+    type Item = (u8, &'a T);
+
+    type IntoIter = Iter<'a, T, N>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Iter {
+            indices: self,
+            idx: 0,
         }
     }
 }
@@ -72,42 +113,7 @@ impl<T, const N: usize> Indices<T> for Indirect<T, N> {
     }
 }
 
-impl<'a, T, const N: usize> IntoIterator for &'a Indirect<T, N> {
-    type Item = (u8, &'a T);
-
-    type IntoIter = Iter<'a, T, N>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        Iter {
-            indices: self,
-            idx: 0,
-        }
-    }
-}
-
-impl<T, const N: usize> Indirect<T, N> {
-    pub fn consume_sorted<const M: usize>(&mut self, other: &mut Sorted<T, M>) {
-        for idx in 0..other.len {
-            let pos = idx as usize;
-            self.indices[other.keys[pos] as usize] = Some(idx);
-            std::mem::swap(&mut self.children[pos], &mut other.children[pos]);
-        }
-        self.len = other.len;
-        other.len = 0;
-    }
-
-    pub fn consume_direct(&mut self, other: &mut Direct<T>) {
-        self.len = 0;
-        for (key, child) in other.children.iter_mut().enumerate() {
-            if let Some(child) = child.take() {
-                self.indices[key] = Some(self.len);
-                self.children[self.len as usize].write(child);
-                self.len += 1;
-            }
-        }
-    }
-}
-
+/// An iterator over the indices and their children.
 #[derive(Debug)]
 pub struct Iter<'a, T, const N: usize> {
     indices: &'a Indirect<T, N>,

@@ -1,9 +1,28 @@
 use super::{take_uninit, Indices, Indirect};
 
+/// A data structure for holding indices that uses a single 256-element array to map directly from
+/// byte keys to their children.
 #[derive(Debug)]
 pub struct Direct<T> {
     pub(super) len: u16,
     pub(super) children: [Option<T>; 256],
+}
+
+impl<T> Direct<T> {
+    const DEFAULT_CHILD: Option<T> = None;
+
+    /// Moves all children and keys from the given indirect indices to this one.
+    pub fn consume_indirect<const N: usize>(&mut self, other: &mut Indirect<T, N>) {
+        self.len = 0;
+        for key in 0..256 {
+            self.children[key] = other.indices[key].map(|idx| {
+                self.len += 1;
+                // SAFETY: If we found Some(index), the corresponding child must have been initialized.
+                unsafe { take_uninit(&mut other.children[idx as usize]) }
+            });
+        }
+        other.len = 0;
+    }
 }
 
 impl<T> Default for Direct<T> {
@@ -11,6 +30,19 @@ impl<T> Default for Direct<T> {
         Self {
             len: 0,
             children: [Self::DEFAULT_CHILD; 256],
+        }
+    }
+}
+
+impl<'a, T> IntoIterator for &'a Direct<T> {
+    type Item = (u8, &'a T);
+
+    type IntoIter = Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Iter {
+            indices: self,
+            idx: 0,
         }
     }
 }
@@ -54,35 +86,7 @@ impl<T> Indices<T> for Direct<T> {
     }
 }
 
-impl<'a, T> IntoIterator for &'a Direct<T> {
-    type Item = (u8, &'a T);
-
-    type IntoIter = Iter<'a, T>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        Iter {
-            indices: self,
-            idx: 0,
-        }
-    }
-}
-
-impl<T> Direct<T> {
-    const DEFAULT_CHILD: Option<T> = None;
-
-    pub fn consume_indirect<const N: usize>(&mut self, other: &mut Indirect<T, N>) {
-        self.len = 0;
-        for key in 0..256 {
-            self.children[key] = other.indices[key].map(|idx| {
-                self.len += 1;
-                // SAFETY: If we found Some(index), the corresponding child must have been initialized.
-                unsafe { take_uninit(&mut other.children[idx as usize]) }
-            });
-        }
-        other.len = 0;
-    }
-}
-
+/// An iterator over the indices and their children.
 #[derive(Debug)]
 pub struct Iter<'a, T> {
     indices: &'a Direct<T>,
