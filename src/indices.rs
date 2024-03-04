@@ -1,6 +1,10 @@
-pub mod direct;
-pub mod indirect;
-pub mod sorted;
+mod direct;
+mod indices16;
+mod indices256;
+mod indices4;
+mod indices48;
+mod indirect;
+mod sorted;
 
 pub use direct::Direct;
 pub use indirect::Indirect;
@@ -56,6 +60,282 @@ unsafe fn take_uninit<T>(maybe_uninit: &mut MaybeUninit<T>) -> T {
 mod tests {
     use crate::indices::{Direct, Indices, Indirect, Sorted};
 
+    use super::{
+        indices16::Indices16, indices256::Indices256, indices4::Indices4, indices48::Indices48,
+    };
+
+    fn test_indices_add_child<IDX>(indices: &mut IDX, max: u8)
+    where
+        IDX: Indices<usize>,
+    {
+        for i in 0..=max {
+            indices.add_child(i, i as usize);
+            assert_eq!(indices.len(), i as usize + 1);
+        }
+        assert!(indices.is_full());
+    }
+
+    fn test_indices_del_child<IDX>(indices: &mut IDX, max: u8)
+    where
+        IDX: Indices<usize>,
+    {
+        for i in 0..=max {
+            let child = indices.del_child(i);
+            assert!(child.is_none());
+        }
+        for i in 0..=max {
+            indices.add_child(i, i as usize);
+        }
+        for i in 0..=max {
+            let child = indices.del_child(i);
+            assert_eq!(child, Some(i as usize));
+            let child = indices.child_ref(i);
+            assert!(child.is_none());
+        }
+        assert_eq!(indices.len(), 0);
+    }
+
+    fn test_indices_child_ref<IDX>(indices: &mut IDX, max: u8)
+    where
+        IDX: Indices<usize>,
+    {
+        for i in 0..=max {
+            let child = indices.child_ref(i);
+            assert!(child.is_none());
+        }
+        for i in 0..=max {
+            indices.add_child(i, i as usize);
+        }
+        for i in 0..=max {
+            let child = indices.child_ref(i);
+            assert_eq!(child, Some(&(i as usize)));
+        }
+    }
+
+    fn test_indices_child_mut<IDX>(indices: &mut IDX, max: u8)
+    where
+        IDX: Indices<usize>,
+    {
+        for i in 0..=max {
+            let child = indices.child_mut(i);
+            assert!(child.is_none());
+        }
+        for i in 0..=max {
+            indices.add_child(i, i as usize);
+        }
+        for i in 0..=max {
+            let child = indices.child_mut(i).expect("child must exist");
+            *child = (max - i) as usize;
+        }
+        for i in 0..=max {
+            let child = indices.child_ref(i);
+            assert_eq!(child, Some(&((max - i) as usize)));
+        }
+    }
+
+    fn test_indices_min<IDX>(indices: &mut IDX, max: u8)
+    where
+        IDX: Indices<usize>,
+    {
+        for i in (0..=max).rev() {
+            indices.add_child(i, i as usize);
+            let min_child = indices.min();
+            assert_eq!(min_child, Some(&(i as usize)));
+        }
+    }
+
+    fn test_indices_max<IDX>(indices: &mut IDX, max: u8)
+    where
+        IDX: Indices<usize>,
+    {
+        for i in 0..=max {
+            indices.add_child(i, i as usize);
+            let max_child = indices.max();
+            assert_eq!(max_child, Some(&(i as usize)));
+        }
+    }
+
+    fn test_indices_iter<'a, IDX>(indices: &'a mut IDX, max: u8)
+    where
+        IDX: Indices<usize>,
+        &'a IDX: IntoIterator<Item = (u8, &'a usize)>,
+    {
+        for i in 0..=max {
+            indices.add_child(i, i as usize);
+        }
+        for (i, (key, child)) in indices.into_iter().enumerate() {
+            assert_eq!(i, key as usize);
+            assert_eq!(i, *child);
+        }
+    }
+
+    #[test]
+    fn test_indices4_add_child() {
+        let mut indices = Indices4::<usize>::default();
+        test_indices_add_child(&mut indices, 3);
+    }
+
+    #[test]
+    fn test_indices4_del_child() {
+        let mut indices = Indices4::<usize>::default();
+        test_indices_del_child(&mut indices, 3);
+    }
+
+    #[test]
+    fn test_indices4_child_ref() {
+        let mut indices = Indices4::<usize>::default();
+        test_indices_child_ref(&mut indices, 3);
+    }
+
+    #[test]
+    fn test_indices4_child_mut() {
+        let mut indices = Indices4::<usize>::default();
+        test_indices_child_mut(&mut indices, 3);
+    }
+
+    #[test]
+    fn test_indices4_min() {
+        let mut indices = Indices4::<usize>::default();
+        test_indices_min(&mut indices, 3);
+    }
+
+    #[test]
+    fn test_indices4_max() {
+        let mut indices = Indices4::<usize>::default();
+        test_indices_max(&mut indices, 3);
+    }
+
+    #[test]
+    fn test_indices4_iter() {
+        let mut indices = Indices4::<usize>::default();
+        test_indices_iter(&mut indices, 3);
+    }
+
+    #[test]
+    fn test_indices16_add_child() {
+        let mut indices = Indices16::<usize>::default();
+        test_indices_add_child(&mut indices, 15);
+    }
+
+    #[test]
+    fn test_indices16_del_child() {
+        let mut indices = Indices16::<usize>::default();
+        test_indices_del_child(&mut indices, 15);
+    }
+
+    #[test]
+    fn test_indices16_child_ref() {
+        let mut indices = Indices16::<usize>::default();
+        test_indices_child_ref(&mut indices, 15);
+    }
+
+    #[test]
+    fn test_indices16_child_mut() {
+        let mut indices = Indices16::<usize>::default();
+        test_indices_child_mut(&mut indices, 15);
+    }
+
+    #[test]
+    fn test_indices16_min() {
+        let mut indices = Indices16::<usize>::default();
+        test_indices_min(&mut indices, 15);
+    }
+
+    #[test]
+    fn test_indices16_max() {
+        let mut indices = Indices16::<usize>::default();
+        test_indices_max(&mut indices, 15);
+    }
+
+    #[test]
+    fn test_indices16_iter() {
+        let mut indices = Indices16::<usize>::default();
+        test_indices_iter(&mut indices, 15);
+    }
+
+    #[test]
+    fn test_indices48_add_child() {
+        let mut indices = Indices48::<usize>::default();
+        test_indices_add_child(&mut indices, 47);
+    }
+
+    #[test]
+    fn test_indices48_del_child() {
+        let mut indices = Indices48::<usize>::default();
+        test_indices_del_child(&mut indices, 47);
+    }
+
+    #[test]
+    fn test_indices48_child_ref() {
+        let mut indices = Indices48::<usize>::default();
+        test_indices_child_ref(&mut indices, 47);
+    }
+
+    #[test]
+    fn test_indices48_child_mut() {
+        let mut indices = Indices48::<usize>::default();
+        test_indices_child_mut(&mut indices, 47);
+    }
+
+    #[test]
+    fn test_indices48_min() {
+        let mut indices = Indices48::<usize>::default();
+        test_indices_min(&mut indices, 47);
+    }
+
+    #[test]
+    fn test_indices48_max() {
+        let mut indices = Indices48::<usize>::default();
+        test_indices_max(&mut indices, 47);
+    }
+
+    #[test]
+    fn test_indices48_iter() {
+        let mut indices = Indices48::<usize>::default();
+        test_indices_iter(&mut indices, 47);
+    }
+
+    #[test]
+    fn test_indices256_add_child() {
+        let mut indices = Indices256::<usize>::default();
+        test_indices_add_child(&mut indices, 255);
+    }
+
+    #[test]
+    fn test_indices256_del_child() {
+        let mut indices = Indices256::<usize>::default();
+        test_indices_del_child(&mut indices, 255);
+    }
+
+    #[test]
+    fn test_indices256_child_ref() {
+        let mut indices = Indices256::<usize>::default();
+        test_indices_child_ref(&mut indices, 255);
+    }
+
+    #[test]
+    fn test_indices256_child_mut() {
+        let mut indices = Indices256::<usize>::default();
+        test_indices_child_mut(&mut indices, 255);
+    }
+
+    #[test]
+    fn test_indices256_min() {
+        let mut indices = Indices256::<usize>::default();
+        test_indices_min(&mut indices, 255);
+    }
+
+    #[test]
+    fn test_indices256_max() {
+        let mut indices = Indices256::<usize>::default();
+        test_indices_max(&mut indices, 255);
+    }
+
+    #[test]
+    fn test_indices256_iter() {
+        let mut indices = Indices256::<usize>::default();
+        test_indices_iter(&mut indices, 255);
+    }
     #[test]
     fn test_sorted_indices_set_child() {
         let mut indices = Sorted::<usize, 16>::default();
