@@ -50,25 +50,20 @@ impl<T> Indices<T> for Indices48<T> {
         self.len as usize
     }
 
-    fn is_full(&self) -> bool {
-        self.len as usize >= 16
-    }
-
     fn del_child(&mut self, key: u8) -> Option<T> {
         self.index_of_key(key).map(|idx| {
-            let child = self.children[idx].take().expect("child must exist");
-            self.keys[key as usize] = 0;
             self.len -= 1;
-            *child
+            self.keys[key as usize] = 0;
+            *self.children[idx].take().expect("child must exist")
         })
     }
 
     fn add_child(&mut self, key: u8, child: T) {
         for idx in 0u8..48u8 {
             if self.children[idx as usize].is_none() {
+                self.len += 1;
                 self.keys[key as usize] = idx + 1;
                 self.children[idx as usize] = Some(Box::new(child));
-                self.len += 1;
                 break;
             }
         }

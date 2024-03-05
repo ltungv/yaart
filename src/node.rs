@@ -196,25 +196,49 @@ where
         }
         Node::Inner(inner) => match &inner.indices {
             InnerIndices::Node4(indices) => {
-                writeln!(f, "[{:03}] node4 {:?}", key, inner.partial)?;
+                writeln!(
+                    f,
+                    "[{:03}] node4 (len: {}) {:?}",
+                    key,
+                    indices.len(),
+                    inner.partial
+                )?;
                 for (key, child) in indices {
                     debug_print(f, child, key, level + 1)?;
                 }
             }
             InnerIndices::Node16(indices) => {
-                writeln!(f, "[{:03}] node16 {:?}", key, inner.partial)?;
+                writeln!(
+                    f,
+                    "[{:03}] node16 (len: {}) {:?}",
+                    key,
+                    indices.len(),
+                    inner.partial
+                )?;
                 for (key, child) in indices {
                     debug_print(f, child, key, level + 1)?;
                 }
             }
             InnerIndices::Node48(indices) => {
-                writeln!(f, "[{:03}] node48 {:?}", key, inner.partial)?;
+                writeln!(
+                    f,
+                    "[{:03}] node48 (len: {}) {:?}",
+                    key,
+                    indices.len(),
+                    inner.partial
+                )?;
                 for (key, child) in indices {
                     debug_print(f, child, key, level + 1)?;
                 }
             }
             InnerIndices::Node256(indices) => {
-                writeln!(f, "[{:03}] node256 {:?}", key, inner.partial)?;
+                writeln!(
+                    f,
+                    "[{:03}] node256 (len: {}) {:?}",
+                    key,
+                    indices.len(),
+                    inner.partial
+                )?;
                 for (key, child) in indices {
                     debug_print(f, child, key, level + 1)?;
                 }
@@ -373,17 +397,17 @@ where
     fn grow(&mut self) {
         match &mut self.indices {
             InnerIndices::Node4(indices) => {
-                if indices.is_full() {
+                if indices.len() == 4 {
                     self.indices = InnerIndices::Node16(Indices16::<Node<K, V, P>>::from(indices));
                 }
             }
             InnerIndices::Node16(indices) => {
-                if indices.is_full() {
+                if indices.len() == 16 {
                     self.indices = InnerIndices::Node48(Indices48::<Node<K, V, P>>::from(indices));
                 }
             }
             InnerIndices::Node48(indices) => {
-                if indices.is_full() {
+                if indices.len() == 48 {
                     self.indices =
                         InnerIndices::Node256(Indices256::<Node<K, V, P>>::from(indices));
                 }

@@ -13,9 +13,6 @@ pub trait Indices<T> {
     /// Returns the number of children currently in the indices.
     fn len(&self) -> usize;
 
-    /// Returns `true` if the number of children reaches the maximum capacity.
-    fn is_full(&self) -> bool;
-
     /// Removes the child associated to the given key and returns it.
     fn del_child(&mut self, key: u8) -> Option<T>;
 
@@ -35,6 +32,16 @@ pub trait Indices<T> {
     fn max(&self) -> Option<&T>;
 }
 
+fn ordered_insert<T>(items: &mut [T], index: usize, value: T) {
+    items[index..].rotate_right(1);
+    items[index] = value;
+}
+
+fn ordered_remove<T>(items: &mut [T], index: usize) -> &mut T {
+    items[index..].rotate_left(1);
+    &mut items[items.len() - 1]
+}
+
 #[cfg(test)]
 mod tests {
     use crate::indices::Indices;
@@ -51,7 +58,6 @@ mod tests {
             indices.add_child(i, i as usize);
             assert_eq!(indices.len(), i as usize + 1);
         }
-        assert!(indices.is_full());
     }
 
     fn test_indices_del_child<IDX>(indices: &mut IDX, max: u8)

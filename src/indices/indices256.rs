@@ -40,10 +40,6 @@ impl<T> Indices<T> for Indices256<T> {
         self.len as usize
     }
 
-    fn is_full(&self) -> bool {
-        self.len as usize >= 256
-    }
-
     fn del_child(&mut self, key: u8) -> Option<T> {
         self.children[key as usize].take().map(|child| {
             self.len -= 1;

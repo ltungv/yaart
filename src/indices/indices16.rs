@@ -1,4 +1,4 @@
-use super::{Indices, Indices4, Indices48};
+use super::{ordered_insert, ordered_remove, Indices, Indices4, Indices48};
 
 /// A data structure for holding indices that uses 2 arrays of the same size to map from byte keys
 /// to their children. The keys and pointers are stored at corresponding positions and the keys are
@@ -46,18 +46,14 @@ impl<T> Indices<T> for Indices16<T> {
         self.len as usize
     }
 
-    fn is_full(&self) -> bool {
-        self.len as usize >= 16
-    }
-
     fn del_child(&mut self, key: u8) -> Option<T> {
         self.index_of_key(key)
             .map(|idx| {
-                let child = self.children[idx].take().expect("child must exist");
-                self.keys[idx..].rotate_left(1);
-                self.children[idx..].rotate_left(1);
                 self.len -= 1;
-                *child
+                ordered_remove(&mut self.keys, idx);
+                *ordered_remove(&mut self.children, idx)
+                    .take()
+                    .expect("child must exist")
             })
             .ok()
     }
@@ -66,11 +62,9 @@ impl<T> Indices<T> for Indices16<T> {
         let idx = self
             .index_of_key(key)
             .unwrap_or_else(std::convert::identity);
-        self.keys[idx..].rotate_right(1);
-        self.keys[idx] = key;
-        self.children[idx..].rotate_right(1);
-        self.children[idx] = Some(Box::new(child));
         self.len += 1;
+        ordered_insert(&mut self.keys, idx, key);
+        ordered_insert(&mut self.children, idx, Some(Box::new(child)));
     }
 
     fn child_ref(&self, key: u8) -> Option<&T> {

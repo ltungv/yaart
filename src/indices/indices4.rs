@@ -1,4 +1,4 @@
-use super::{Indices, Indices16};
+use super::{ordered_insert, ordered_remove, Indices, Indices16};
 
 #[derive(Debug)]
 pub struct Indices4<T> {
@@ -11,12 +11,12 @@ impl<T> Indices4<T> {
     const NONE: Option<Box<T>> = None;
 
     pub fn free(&mut self) -> (u8, T) {
-        let key = self.keys[0];
-        let child = self.children[0].take().expect("child must exist");
         self.len -= 1;
-        self.keys.rotate_left(1);
-        self.children.rotate_left(1);
-        (key, *child)
+        let key = ordered_remove(&mut self.keys, 0);
+        let child = ordered_remove(&mut self.children, 0)
+            .take()
+            .expect("child must exist");
+        (*key, *child)
     }
 
     fn index_of_key(&self, key: u8) -> Option<usize> {
@@ -54,17 +54,13 @@ impl<T> Indices<T> for Indices4<T> {
         self.len as usize
     }
 
-    fn is_full(&self) -> bool {
-        self.len as usize >= 4
-    }
-
     fn del_child(&mut self, key: u8) -> Option<T> {
         self.index_of_key(key).map(|idx| {
-            let child = self.children[idx].take().expect("child must exist");
-            self.keys[idx..].rotate_left(1);
-            self.children[idx..].rotate_left(1);
             self.len -= 1;
-            *child
+            ordered_remove(&mut self.keys, idx);
+            *ordered_remove(&mut self.children, idx)
+                .take()
+                .expect("child must exist")
         })
     }
 
@@ -73,11 +69,9 @@ impl<T> Indices<T> for Indices4<T> {
         while idx < self.len as usize && self.keys[idx] < key {
             idx += 1;
         }
-        self.keys[idx..].rotate_right(1);
-        self.keys[idx] = key;
-        self.children[idx..].rotate_right(1);
-        self.children[idx] = Some(Box::new(child));
         self.len += 1;
+        ordered_insert(&mut self.keys, idx, key);
+        ordered_insert(&mut self.children, idx, Some(Box::new(child)));
     }
 
     fn child_ref(&self, key: u8) -> Option<&T> {
