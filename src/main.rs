@@ -29,9 +29,16 @@ fn get_key_samples(
         for _ in 0..suffix_count {
             let mut prefix = String::new();
             match suffix_count % 3 {
-                0 => prefix = prefix + &prefix1,
-                1 => prefix = prefix + &prefix1 + &prefix2,
-                _ => prefix = prefix + &prefix1 + &prefix2 + &prefix3,
+                0 => prefix.push_str(&prefix1),
+                1 => {
+                    prefix.push_str(&prefix1);
+                    prefix.push_str(&prefix2);
+                }
+                _ => {
+                    prefix.push_str(&prefix1);
+                    prefix.push_str(&prefix2);
+                    prefix.push_str(&prefix3);
+                }
             }
 
             let suffix: String = rand::thread_rng()
@@ -58,16 +65,6 @@ fn main() {
         let v: u32 = rng.gen();
         tree.insert(key.clone(), v);
         hash.insert(key.clone(), v);
-    }
-
-    println!("================================");
-    println!("{:?}", tree);
-
-    for (k, v) in &hash {
-        assert_eq!(tree.search(k), Some(v));
-        assert_eq!(tree.delete(k), Some(*v));
-        assert_eq!(tree.search(k), None);
-        assert_eq!(tree.delete(k), None);
     }
 
     println!("================================");

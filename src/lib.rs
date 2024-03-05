@@ -258,19 +258,44 @@ mod tests {
     ) -> Vec<String> {
         let mut keys = Vec::new();
         for prefix_len in prefix_sizes {
-            let prefix: String = rand::thread_rng()
+            let prefix1: String = rand::thread_rng()
+                .sample_iter(Alphanumeric)
+                .map(char::from)
+                .take(prefix_len)
+                .collect();
+            let prefix2: String = rand::thread_rng()
+                .sample_iter(Alphanumeric)
+                .map(char::from)
+                .take(prefix_len)
+                .collect();
+            let prefix3: String = rand::thread_rng()
                 .sample_iter(Alphanumeric)
                 .map(char::from)
                 .take(prefix_len)
                 .collect();
 
             for _ in 0..suffix_count {
+                let mut prefix = String::new();
+                match suffix_count % 3 {
+                    0 => prefix.push_str(&prefix1),
+                    1 => {
+                        prefix.push_str(&prefix1);
+                        prefix.push_str(&prefix2);
+                    }
+                    _ => {
+                        prefix.push_str(&prefix1);
+                        prefix.push_str(&prefix2);
+                        prefix.push_str(&prefix3);
+                    }
+                }
+
                 let suffix: String = rand::thread_rng()
                     .sample_iter(Alphanumeric)
                     .map(char::from)
                     .take(suffix_size)
                     .collect();
-                keys.push(prefix.clone() + &suffix);
+
+                keys.push(prefix + &suffix);
             }
         }
         let mut rng = rand::thread_rng();
