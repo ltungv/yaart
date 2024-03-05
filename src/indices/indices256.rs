@@ -1,12 +1,12 @@
-use super::Indices;
+use super::{Indices, Indices48};
 
 /// A data structure for holding indices that uses 2 arrays of the same size to map from byte keys
 /// to their children. The keys and pointers are stored at corresponding positions and the keys are
 /// sorted.
 #[derive(Debug)]
 pub struct Indices256<T> {
-    pub len: u16,
-    pub children: [Option<Box<T>>; 256],
+    pub(super) len: u16,
+    pub(super) children: [Option<Box<T>>; 256],
 }
 
 impl<T> Indices256<T> {
@@ -79,6 +79,24 @@ impl<T> Indices<T> for Indices256<T> {
             .iter()
             .rev()
             .find_map(|child| child.as_ref().map(Box::as_ref))
+    }
+}
+
+impl<T> From<&mut Indices48<T>> for Indices256<T> {
+    fn from(other: &mut Indices48<T>) -> Self {
+        let mut indices = Self::default();
+        for key in 0..=255 {
+            let idx_old = other.keys[key];
+            if idx_old == 0 {
+                continue;
+            }
+            other.keys[key] = 0;
+            let child = other.children[idx_old as usize - 1].take();
+            indices.children[key] = child;
+        }
+        indices.len = u16::from(other.len);
+        other.len = 0;
+        indices
     }
 }
 

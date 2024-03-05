@@ -1,13 +1,13 @@
-use super::Indices;
+use super::{Indices, Indices16, Indices256};
 
 /// A data structure for holding indices that uses 2 arrays of the same size to map from byte keys
 /// to their children. The keys and pointers are stored at corresponding positions and the keys are
 /// sorted.
 #[derive(Debug)]
 pub struct Indices48<T> {
-    pub len: u8,
-    pub keys: [u8; 256],
-    pub children: [Option<Box<T>>; 48],
+    pub(super) len: u8,
+    pub(super) keys: [u8; 256],
+    pub(super) children: [Option<Box<T>>; 48],
 }
 
 impl<T> Indices48<T> {
@@ -108,6 +108,36 @@ impl<T> Indices<T> for Indices48<T> {
                 .expect("child must exist")
                 .as_ref()
         })
+    }
+}
+
+impl<T> From<&mut Indices16<T>> for Indices48<T> {
+    fn from(other: &mut Indices16<T>) -> Self {
+        let mut indices = Self::default();
+        for idx in 0..other.len {
+            let key = other.keys[idx as usize];
+            let child = other.children[idx as usize].take();
+            indices.keys[key as usize] = idx + 1;
+            indices.children[idx as usize] = child;
+        }
+        indices.len = other.len;
+        other.len = 0;
+        indices
+    }
+}
+
+impl<T> From<&mut Indices256<T>> for Indices48<T> {
+    fn from(other: &mut Indices256<T>) -> Self {
+        let mut indices = Self::default();
+        for key in 0..=255 {
+            if let Some(child) = other.children[key].take() {
+                indices.keys[key] = indices.len + 1;
+                indices.children[indices.len as usize] = Some(child);
+                indices.len += 1;
+            }
+        }
+        other.len = 0;
+        indices
     }
 }
 

@@ -1,7 +1,7 @@
 use std::cmp::min;
 
 use crate::{
-    indices::{Direct, Indices, Indirect, Sorted},
+    indices::{Indices, Indices16, Indices256, Indices4, Indices48},
     BytesComparable,
 };
 
@@ -194,7 +194,7 @@ where
         Node::Leaf(leaf) => {
             writeln!(f, "[{:03}] leaf: {:?} -> {:?}", key, leaf.key, leaf.value)?;
         }
-        Node::Inner(inner) => match inner.indices.as_ref() {
+        Node::Inner(inner) => match &inner.indices {
             InnerIndices::Node4(indices) => {
                 writeln!(f, "[{:03}] node4 {:?}", key, inner.partial)?;
                 for (key, child) in indices {
@@ -260,14 +260,14 @@ where
 #[derive(Debug)]
 pub struct Inner<K, V, const P: usize> {
     partial: PartialKey<P>,
-    indices: Box<InnerIndices<K, V, P>>,
+    indices: InnerIndices<K, V, P>,
 }
 
 impl<K, V, const P: usize> Inner<K, V, P> {
     fn new(partial: PartialKey<P>) -> Self {
         Self {
             partial,
-            indices: Box::new(InnerIndices::Node4(Sorted::default())),
+            indices: InnerIndices::Node4(Indices4::default()),
         }
     }
 }
@@ -335,7 +335,7 @@ where
 
     fn add_child(&mut self, key: u8, child: Node<K, V, P>) {
         self.grow();
-        match self.indices.as_mut() {
+        match &mut self.indices {
             InnerIndices::Node4(indices) => indices.add_child(key, child),
             InnerIndices::Node16(indices) => indices.add_child(key, child),
             InnerIndices::Node48(indices) => indices.add_child(key, child),
@@ -344,7 +344,7 @@ where
     }
 
     fn del_child(&mut self, key: u8) -> Option<Node<K, V, P>> {
-        match self.indices.as_mut() {
+        match &mut self.indices {
             InnerIndices::Node4(indices) => indices.del_child(key),
             InnerIndices::Node16(indices) => indices.del_child(key),
             InnerIndices::Node48(indices) => indices.del_child(key),
@@ -353,7 +353,7 @@ where
     }
 
     fn child_ref(&self, key: u8) -> Option<&Node<K, V, P>> {
-        match self.indices.as_ref() {
+        match &self.indices {
             InnerIndices::Node4(indices) => indices.child_ref(key),
             InnerIndices::Node16(indices) => indices.child_ref(key),
             InnerIndices::Node48(indices) => indices.child_ref(key),
@@ -362,7 +362,7 @@ where
     }
 
     fn child_mut(&mut self, key: u8) -> Option<&mut Node<K, V, P>> {
-        match self.indices.as_mut() {
+        match &mut self.indices {
             InnerIndices::Node4(indices) => indices.child_mut(key),
             InnerIndices::Node16(indices) => indices.child_mut(key),
             InnerIndices::Node48(indices) => indices.child_mut(key),
@@ -371,26 +371,21 @@ where
     }
 
     fn grow(&mut self) {
-        match self.indices.as_mut() {
+        match &mut self.indices {
             InnerIndices::Node4(indices) => {
                 if indices.is_full() {
-                    let mut new_indices = Sorted::<Node<K, V, P>, 16>::default();
-                    new_indices.consume_sorted(indices);
-                    self.indices = Box::new(InnerIndices::Node16(new_indices));
+                    self.indices = InnerIndices::Node16(Indices16::<Node<K, V, P>>::from(indices));
                 }
             }
             InnerIndices::Node16(indices) => {
                 if indices.is_full() {
-                    let mut new_indices = Indirect::<Node<K, V, P>, 48>::default();
-                    new_indices.consume_sorted(indices);
-                    self.indices = Box::new(InnerIndices::Node48(new_indices));
+                    self.indices = InnerIndices::Node48(Indices48::<Node<K, V, P>>::from(indices));
                 }
             }
             InnerIndices::Node48(indices) => {
                 if indices.is_full() {
-                    let mut new_indices = Direct::<Node<K, V, P>>::default();
-                    new_indices.consume_indirect(indices);
-                    self.indices = Box::new(InnerIndices::Node256(new_indices));
+                    self.indices =
+                        InnerIndices::Node256(Indices256::<Node<K, V, P>>::from(indices));
                 }
             }
             InnerIndices::Node256(_) => {}
@@ -398,9 +393,10 @@ where
     }
 
     fn shrink(&mut self) -> Option<Node<K, V, P>> {
-        match self.indices.as_mut() {
+        match &mut self.indices {
             InnerIndices::Node4(indices) => {
-                if let Some((sub_child_key, mut sub_child)) = indices.release() {
+                if indices.len() <= 1 {
+                    let (sub_child_key, mut sub_child) = indices.free();
                     if let Node::Inner(sub_child) = &mut sub_child {
                         self.partial.push(sub_child_key);
                         self.partial.append(&sub_child.partial);
@@ -410,24 +406,18 @@ where
                 }
             }
             InnerIndices::Node16(indices) => {
-                if indices.len() < 4 {
-                    let mut new_indices = Sorted::<Node<K, V, P>, 4>::default();
-                    new_indices.consume_sorted(indices);
-                    self.indices = Box::new(InnerIndices::Node4(new_indices));
+                if indices.len() <= 3 {
+                    self.indices = InnerIndices::Node4(Indices4::from(indices));
                 }
             }
             InnerIndices::Node48(indices) => {
-                if indices.len() < 16 {
-                    let mut new_indices = Sorted::<Node<K, V, P>, 16>::default();
-                    new_indices.consume_indirect(indices);
-                    self.indices = Box::new(InnerIndices::Node16(new_indices));
+                if indices.len() <= 12 {
+                    self.indices = InnerIndices::Node16(Indices16::from(indices));
                 }
             }
             InnerIndices::Node256(indices) => {
-                if indices.len() < 48 {
-                    let mut new_indices = Indirect::<Node<K, V, P>, 48>::default();
-                    new_indices.consume_direct(indices);
-                    self.indices = Box::new(InnerIndices::Node48(new_indices));
+                if indices.len() <= 37 {
+                    self.indices = InnerIndices::Node48(Indices48::from(indices));
                 }
             }
         }
@@ -459,10 +449,10 @@ where
 
 #[derive(Debug)]
 enum InnerIndices<K, V, const P: usize> {
-    Node4(Sorted<Node<K, V, P>, 4>),
-    Node16(Sorted<Node<K, V, P>, 16>),
-    Node48(Indirect<Node<K, V, P>, 48>),
-    Node256(Direct<Node<K, V, P>>),
+    Node4(Indices4<Node<K, V, P>>),
+    Node16(Indices16<Node<K, V, P>>),
+    Node48(Indices48<Node<K, V, P>>),
+    Node256(Indices256<Node<K, V, P>>),
 }
 
 impl<K, V, const P: usize> InnerIndices<K, V, P> {

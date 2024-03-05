@@ -1,13 +1,13 @@
-use super::Indices;
+use super::{Indices, Indices4, Indices48};
 
 /// A data structure for holding indices that uses 2 arrays of the same size to map from byte keys
 /// to their children. The keys and pointers are stored at corresponding positions and the keys are
 /// sorted.
 #[derive(Debug)]
 pub struct Indices16<T> {
-    pub len: u8,
-    pub keys: [u8; 16],
-    pub children: [Option<Box<T>>; 16],
+    pub(super) len: u8,
+    pub(super) keys: [u8; 16],
+    pub(super) children: [Option<Box<T>>; 16],
 }
 
 impl<T> Indices16<T> {
@@ -105,6 +105,39 @@ impl<T> Indices<T> for Indices16<T> {
         self.children[..self.len as usize]
             .last()
             .map(|child| child.as_ref().expect("child must exist").as_ref())
+    }
+}
+
+impl<T> From<&mut Indices4<T>> for Indices16<T> {
+    fn from(other: &mut Indices4<T>) -> Self {
+        let mut indices = Self::default();
+        for i in 0..other.len as usize {
+            indices.keys[i] = other.keys[i];
+            indices.children[i] = other.children[i].take();
+        }
+        indices.len = other.len;
+        other.len = 0;
+        indices
+    }
+}
+
+impl<T> From<&mut Indices48<T>> for Indices16<T> {
+    fn from(other: &mut Indices48<T>) -> Self {
+        let mut indices = Self::default();
+        for key in 0..=255 {
+            let idx_old = other.keys[key as usize];
+            if idx_old == 0 {
+                continue;
+            }
+            other.keys[key as usize] = 0;
+            let child = other.children[idx_old as usize - 1].take();
+            let idx_new = indices.len as usize;
+            indices.len += 1;
+            indices.keys[idx_new] = key;
+            indices.children[idx_new] = child;
+        }
+        other.len = 0;
+        indices
     }
 }
 

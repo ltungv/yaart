@@ -1,17 +1,23 @@
-use super::Indices;
+use super::{Indices, Indices16};
 
-/// A data structure for holding indices that uses 2 arrays of the same size to map from byte keys
-/// to their children. The keys and pointers are stored at corresponding positions and the keys are
-/// sorted.
 #[derive(Debug)]
 pub struct Indices4<T> {
-    pub len: u8,
-    pub keys: [u8; 4],
-    pub children: [Option<Box<T>>; 4],
+    pub(super) len: u8,
+    pub(super) keys: [u8; 4],
+    pub(super) children: [Option<Box<T>>; 4],
 }
 
 impl<T> Indices4<T> {
     const NONE: Option<Box<T>> = None;
+
+    pub fn free(&mut self) -> (u8, T) {
+        let key = self.keys[0];
+        let child = self.children[0].take().expect("child must exist");
+        self.len -= 1;
+        self.keys.rotate_left(1);
+        self.children.rotate_left(1);
+        (key, *child)
+    }
 
     fn index_of_key(&self, key: u8) -> Option<usize> {
         self.keys[..self.len as usize]
@@ -63,8 +69,14 @@ impl<T> Indices<T> for Indices4<T> {
     }
 
     fn add_child(&mut self, key: u8, child: T) {
-        self.keys[self.len as usize] = key;
-        self.children[self.len as usize] = Some(Box::new(child));
+        let mut idx = 0;
+        while idx < self.len as usize && self.keys[idx] < key {
+            idx += 1;
+        }
+        self.keys[idx..].rotate_right(1);
+        self.keys[idx] = key;
+        self.children[idx..].rotate_right(1);
+        self.children[idx] = Some(Box::new(child));
         self.len += 1;
     }
 
@@ -87,37 +99,28 @@ impl<T> Indices<T> for Indices4<T> {
     }
 
     fn min(&self) -> Option<&T> {
-        let mut min_key = u8::MAX;
-        let mut min_idx: Option<usize> = None;
-        for (idx, &key) in self.keys[..self.len as usize].iter().enumerate() {
-            if key <= min_key {
-                min_key = key;
-                min_idx = Some(idx);
-            }
-        }
-        min_idx.map(|idx| {
-            self.children[idx]
-                .as_ref()
-                .expect("child must exist")
-                .as_ref()
-        })
+        self.children[..self.len as usize]
+            .first()
+            .map(|child| child.as_ref().expect("child must exist").as_ref())
     }
 
     fn max(&self) -> Option<&T> {
-        let mut max_key = u8::MIN;
-        let mut max_idx: Option<usize> = None;
-        for (idx, &key) in self.keys[..self.len as usize].iter().enumerate() {
-            if key >= max_key {
-                max_key = key;
-                max_idx = Some(idx);
-            }
+        self.children[..self.len as usize]
+            .last()
+            .map(|child| child.as_ref().expect("child must exist").as_ref())
+    }
+}
+
+impl<T> From<&mut Indices16<T>> for Indices4<T> {
+    fn from(other: &mut Indices16<T>) -> Self {
+        let mut indices = Self::default();
+        for i in 0..other.len as usize {
+            indices.keys[i] = other.keys[i];
+            indices.children[i] = other.children[i].take();
         }
-        max_idx.map(|idx| {
-            self.children[idx]
-                .as_ref()
-                .expect("child must exist")
-                .as_ref()
-        })
+        indices.len = other.len;
+        other.len = 0;
+        indices
     }
 }
 
