@@ -256,46 +256,34 @@ mod tests {
         suffix_count: usize,
         suffix_size: usize,
     ) -> Vec<String> {
+        let random_string = |size: usize| {
+            rand::thread_rng()
+                .sample_iter(Alphanumeric)
+                .map(char::from)
+                .take(size)
+                .collect::<String>()
+        };
         let mut keys = Vec::new();
-        for prefix_len in prefix_sizes {
-            let prefix1: String = rand::thread_rng()
-                .sample_iter(Alphanumeric)
-                .map(char::from)
-                .take(prefix_len)
-                .collect();
-            let prefix2: String = rand::thread_rng()
-                .sample_iter(Alphanumeric)
-                .map(char::from)
-                .take(prefix_len)
-                .collect();
-            let prefix3: String = rand::thread_rng()
-                .sample_iter(Alphanumeric)
-                .map(char::from)
-                .take(prefix_len)
-                .collect();
-
-            for _ in 0..suffix_count {
-                let mut prefix = String::new();
-                match suffix_count % 3 {
-                    0 => prefix.push_str(&prefix1),
+        for prefix_size in prefix_sizes {
+            let prefix1: String = random_string(prefix_size);
+            let prefix2: String = random_string(prefix_size);
+            let prefix3: String = random_string(prefix_size);
+            for suffix_index in 0..suffix_count {
+                let mut key = String::new();
+                match suffix_index % 3 {
+                    0 => key.push_str(&prefix1),
                     1 => {
-                        prefix.push_str(&prefix1);
-                        prefix.push_str(&prefix2);
+                        key.push_str(&prefix1);
+                        key.push_str(&prefix2);
                     }
                     _ => {
-                        prefix.push_str(&prefix1);
-                        prefix.push_str(&prefix2);
-                        prefix.push_str(&prefix3);
+                        key.push_str(&prefix1);
+                        key.push_str(&prefix2);
+                        key.push_str(&prefix3);
                     }
                 }
-
-                let suffix: String = rand::thread_rng()
-                    .sample_iter(Alphanumeric)
-                    .map(char::from)
-                    .take(suffix_size)
-                    .collect();
-
-                keys.push(prefix + &suffix);
+                key.push_str(&random_string(suffix_size));
+                keys.push(key);
             }
         }
         let mut rng = rand::thread_rng();
