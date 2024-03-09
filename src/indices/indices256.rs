@@ -6,11 +6,11 @@ use super::{Indices, Indices48};
 #[derive(Debug)]
 pub struct Indices256<T> {
     pub(super) len: u16,
-    pub(super) children: [Option<Box<T>>; 256],
+    pub(super) children: [Option<T>; 256],
 }
 
 impl<T> Indices256<T> {
-    const NONE: Option<Box<T>> = None;
+    const NONE: Option<T> = None;
 }
 
 impl<T> Default for Indices256<T> {
@@ -41,40 +41,31 @@ impl<T> Indices<T> for Indices256<T> {
     }
 
     fn del_child(&mut self, key: u8) -> Option<T> {
-        self.children[key as usize].take().map(|child| {
-            self.len -= 1;
-            *child
-        })
+        self.children[key as usize]
+            .take()
+            .inspect(|_| self.len -= 1)
     }
 
     fn add_child(&mut self, key: u8, child: T) {
-        if self.children[key as usize]
-            .replace(Box::new(child))
-            .is_none()
-        {
+        if self.children[key as usize].replace(child).is_none() {
             self.len += 1;
         }
     }
 
     fn child_ref(&self, key: u8) -> Option<&T> {
-        self.children[key as usize].as_ref().map(Box::as_ref)
+        self.children[key as usize].as_ref()
     }
 
     fn child_mut(&mut self, key: u8) -> Option<&mut T> {
-        self.children[key as usize].as_mut().map(Box::as_mut)
+        self.children[key as usize].as_mut()
     }
 
     fn min(&self) -> Option<&T> {
-        self.children
-            .iter()
-            .find_map(|child| child.as_ref().map(Box::as_ref))
+        self.children.iter().find_map(|child| child.as_ref())
     }
 
     fn max(&self) -> Option<&T> {
-        self.children
-            .iter()
-            .rev()
-            .find_map(|child| child.as_ref().map(Box::as_ref))
+        self.children.iter().rev().find_map(|child| child.as_ref())
     }
 }
 

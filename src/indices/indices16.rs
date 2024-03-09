@@ -7,11 +7,11 @@ use super::{ordered_insert, ordered_remove, Indices, Indices4, Indices48};
 pub struct Indices16<T> {
     pub(super) len: u8,
     pub(super) keys: [u8; 16],
-    pub(super) children: [Option<Box<T>>; 16],
+    pub(super) children: [Option<T>; 16],
 }
 
 impl<T> Indices16<T> {
-    const NONE: Option<Box<T>> = None;
+    const NONE: Option<T> = None;
 
     fn index_of_key(&self, key: u8) -> Result<usize, usize> {
         self.keys[..self.len as usize].binary_search(&key)
@@ -51,7 +51,7 @@ impl<T> Indices<T> for Indices16<T> {
             .map(|idx| {
                 self.len -= 1;
                 ordered_remove(&mut self.keys, idx);
-                *ordered_remove(&mut self.children, idx)
+                ordered_remove(&mut self.children, idx)
                     .take()
                     .expect("child must exist")
             })
@@ -64,7 +64,7 @@ impl<T> Indices<T> for Indices16<T> {
             .unwrap_or_else(std::convert::identity);
         self.len += 1;
         ordered_insert(&mut self.keys, idx, key);
-        ordered_insert(&mut self.children, idx, Some(Box::new(child)));
+        ordered_insert(&mut self.children, idx, Some(child));
     }
 
     fn child_ref(&self, key: u8) -> Option<&T> {
@@ -73,7 +73,6 @@ impl<T> Indices<T> for Indices16<T> {
                 self.children[idx]
                     .as_ref()
                     .expect("child must exist")
-                    .as_ref()
             })
             .ok()
     }
@@ -84,7 +83,6 @@ impl<T> Indices<T> for Indices16<T> {
                 self.children[idx]
                     .as_mut()
                     .expect("child must exist")
-                    .as_mut()
             })
             .ok()
     }
@@ -92,13 +90,13 @@ impl<T> Indices<T> for Indices16<T> {
     fn min(&self) -> Option<&T> {
         self.children[..self.len as usize]
             .first()
-            .map(|child| child.as_ref().expect("child must exist").as_ref())
+            .map(|child| child.as_ref().expect("child must exist"))
     }
 
     fn max(&self) -> Option<&T> {
         self.children[..self.len as usize]
             .last()
-            .map(|child| child.as_ref().expect("child must exist").as_ref())
+            .map(|child| child.as_ref().expect("child must exist"))
     }
 }
 
@@ -152,8 +150,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
         let key = self.indices.keys[self.idx as usize];
         let child = self.indices.children[self.idx as usize]
             .as_ref()
-            .expect("key must point to some child")
-            .as_ref();
+            .expect("key must point to some child");
         self.idx += 1;
         Some((key, child))
     }

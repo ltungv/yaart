@@ -7,11 +7,11 @@ use super::{Indices, Indices16, Indices256};
 pub struct Indices48<T> {
     pub(super) len: u8,
     pub(super) keys: [u8; 256],
-    pub(super) children: [Option<Box<T>>; 48],
+    pub(super) children: [Option<T>; 48],
 }
 
 impl<T> Indices48<T> {
-    const NONE: Option<Box<T>> = None;
+    const NONE: Option<T> = None;
 
     const fn index_of_key(&self, key: u8) -> Option<usize> {
         let idx = self.keys[key as usize];
@@ -54,7 +54,7 @@ impl<T> Indices<T> for Indices48<T> {
         self.index_of_key(key).map(|idx| {
             self.len -= 1;
             self.keys[key as usize] = 0;
-            *self.children[idx].take().expect("child must exist")
+            self.children[idx].take().expect("child must exist")
         })
     }
 
@@ -63,28 +63,20 @@ impl<T> Indices<T> for Indices48<T> {
             if self.children[idx as usize].is_none() {
                 self.len += 1;
                 self.keys[key as usize] = idx + 1;
-                self.children[idx as usize] = Some(Box::new(child));
+                self.children[idx as usize] = Some(child);
                 break;
             }
         }
     }
 
     fn child_ref(&self, key: u8) -> Option<&T> {
-        self.index_of_key(key).map(|idx| {
-            self.children[idx]
-                .as_ref()
-                .expect("child must exist")
-                .as_ref()
-        })
+        self.index_of_key(key)
+            .map(|idx| self.children[idx].as_ref().expect("child must exist"))
     }
 
     fn child_mut(&mut self, key: u8) -> Option<&mut T> {
-        self.index_of_key(key).map(|idx| {
-            self.children[idx]
-                .as_mut()
-                .expect("child must exist")
-                .as_mut()
-        })
+        self.index_of_key(key)
+            .map(|idx| self.children[idx].as_mut().expect("child must exist"))
     }
 
     fn min(&self) -> Option<&T> {
@@ -92,7 +84,6 @@ impl<T> Indices<T> for Indices48<T> {
             self.children[idx as usize - 1]
                 .as_ref()
                 .expect("child must exist")
-                .as_ref()
         })
     }
 
@@ -101,7 +92,6 @@ impl<T> Indices<T> for Indices48<T> {
             self.children[idx as usize - 1]
                 .as_ref()
                 .expect("child must exist")
-                .as_ref()
         })
     }
 }

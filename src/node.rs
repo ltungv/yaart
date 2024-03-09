@@ -360,37 +360,37 @@ where
     fn add_child(&mut self, key: u8, child: Node<K, V, P>) {
         self.grow();
         match &mut self.indices {
-            InnerIndices::Node4(indices) => indices.add_child(key, child),
-            InnerIndices::Node16(indices) => indices.add_child(key, child),
-            InnerIndices::Node48(indices) => indices.add_child(key, child),
-            InnerIndices::Node256(indices) => indices.add_child(key, child),
+            InnerIndices::Node4(indices) => indices.add_child(key, Box::new(child)),
+            InnerIndices::Node16(indices) => indices.add_child(key, Box::new(child)),
+            InnerIndices::Node48(indices) => indices.add_child(key, Box::new(child)),
+            InnerIndices::Node256(indices) => indices.add_child(key, Box::new(child)),
         }
     }
 
     fn del_child(&mut self, key: u8) -> Option<Node<K, V, P>> {
         match &mut self.indices {
-            InnerIndices::Node4(indices) => indices.del_child(key),
-            InnerIndices::Node16(indices) => indices.del_child(key),
-            InnerIndices::Node48(indices) => indices.del_child(key),
-            InnerIndices::Node256(indices) => indices.del_child(key),
+            InnerIndices::Node4(indices) => indices.del_child(key).map(|child| *child),
+            InnerIndices::Node16(indices) => indices.del_child(key).map(|child| *child),
+            InnerIndices::Node48(indices) => indices.del_child(key).map(|child| *child),
+            InnerIndices::Node256(indices) => indices.del_child(key).map(|child| *child),
         }
     }
 
     fn child_ref(&self, key: u8) -> Option<&Node<K, V, P>> {
         match &self.indices {
-            InnerIndices::Node4(indices) => indices.child_ref(key),
-            InnerIndices::Node16(indices) => indices.child_ref(key),
-            InnerIndices::Node48(indices) => indices.child_ref(key),
-            InnerIndices::Node256(indices) => indices.child_ref(key),
+            InnerIndices::Node4(indices) => indices.child_ref(key).map(Box::as_ref),
+            InnerIndices::Node16(indices) => indices.child_ref(key).map(Box::as_ref),
+            InnerIndices::Node48(indices) => indices.child_ref(key).map(Box::as_ref),
+            InnerIndices::Node256(indices) => indices.child_ref(key).map(Box::as_ref),
         }
     }
 
     fn child_mut(&mut self, key: u8) -> Option<&mut Node<K, V, P>> {
         match &mut self.indices {
-            InnerIndices::Node4(indices) => indices.child_mut(key),
-            InnerIndices::Node16(indices) => indices.child_mut(key),
-            InnerIndices::Node48(indices) => indices.child_mut(key),
-            InnerIndices::Node256(indices) => indices.child_mut(key),
+            InnerIndices::Node4(indices) => indices.child_mut(key).map(Box::as_mut),
+            InnerIndices::Node16(indices) => indices.child_mut(key).map(Box::as_mut),
+            InnerIndices::Node48(indices) => indices.child_mut(key).map(Box::as_mut),
+            InnerIndices::Node256(indices) => indices.child_mut(key).map(Box::as_mut),
         }
     }
 
@@ -398,18 +398,17 @@ where
         match &mut self.indices {
             InnerIndices::Node4(indices) => {
                 if indices.len() == 4 {
-                    self.indices = InnerIndices::Node16(Indices16::<Node<K, V, P>>::from(indices));
+                    self.indices = InnerIndices::Node16(Indices16::from(indices));
                 }
             }
             InnerIndices::Node16(indices) => {
                 if indices.len() == 16 {
-                    self.indices = InnerIndices::Node48(Indices48::<Node<K, V, P>>::from(indices));
+                    self.indices = InnerIndices::Node48(Indices48::from(indices));
                 }
             }
             InnerIndices::Node48(indices) => {
                 if indices.len() == 48 {
-                    self.indices =
-                        InnerIndices::Node256(Indices256::<Node<K, V, P>>::from(indices));
+                    self.indices = InnerIndices::Node256(Indices256::from(indices));
                 }
             }
             InnerIndices::Node256(_) => {}
@@ -421,12 +420,12 @@ where
             InnerIndices::Node4(indices) => {
                 if indices.len() <= 1 {
                     let (sub_child_key, mut sub_child) = indices.free();
-                    if let Node::Inner(sub_child) = &mut sub_child {
+                    if let Node::Inner(sub_child) = sub_child.as_mut() {
                         self.partial.push(sub_child_key);
                         self.partial.append(&sub_child.partial);
                         std::mem::swap(&mut self.partial, &mut sub_child.partial);
                     }
-                    return Some(sub_child);
+                    return Some(*sub_child);
                 }
             }
             InnerIndices::Node16(indices) => {
@@ -473,19 +472,19 @@ where
 
 #[derive(Debug)]
 enum InnerIndices<K, V, const P: usize> {
-    Node4(Indices4<Node<K, V, P>>),
-    Node16(Indices16<Node<K, V, P>>),
-    Node48(Indices48<Node<K, V, P>>),
-    Node256(Indices256<Node<K, V, P>>),
+    Node4(Indices4<Box<Node<K, V, P>>>),
+    Node16(Indices16<Box<Node<K, V, P>>>),
+    Node48(Indices48<Box<Node<K, V, P>>>),
+    Node256(Indices256<Box<Node<K, V, P>>>),
 }
 
 impl<K, V, const P: usize> InnerIndices<K, V, P> {
     fn min_leaf_recursive(&self) -> Option<&Leaf<K, V>> {
         match self {
-            Self::Node4(indices) => indices.min(),
-            Self::Node16(indices) => indices.min(),
-            Self::Node48(indices) => indices.min(),
-            Self::Node256(indices) => indices.min(),
+            Self::Node4(indices) => indices.min().map(Box::as_ref),
+            Self::Node16(indices) => indices.min().map(Box::as_ref),
+            Self::Node48(indices) => indices.min().map(Box::as_ref),
+            Self::Node256(indices) => indices.min().map(Box::as_ref),
         }
         .and_then(|child| match child {
             Node::Leaf(leaf) => Some(leaf),
@@ -495,10 +494,10 @@ impl<K, V, const P: usize> InnerIndices<K, V, P> {
 
     fn max_leaf_recursive(&self) -> Option<&Leaf<K, V>> {
         match self {
-            Self::Node4(indices) => indices.max(),
-            Self::Node16(indices) => indices.max(),
-            Self::Node48(indices) => indices.max(),
-            Self::Node256(indices) => indices.max(),
+            Self::Node4(indices) => indices.max().map(Box::as_ref),
+            Self::Node16(indices) => indices.max().map(Box::as_ref),
+            Self::Node48(indices) => indices.max().map(Box::as_ref),
+            Self::Node256(indices) => indices.max().map(Box::as_ref),
         }
         .and_then(|child| match child {
             Node::Leaf(leaf) => Some(leaf),
