@@ -69,21 +69,13 @@ impl<T> Indices<T> for Indices16<T> {
 
     fn child_ref(&self, key: u8) -> Option<&T> {
         self.index_of_key(key)
-            .map(|idx| {
-                self.children[idx]
-                    .as_ref()
-                    .expect("child must exist")
-            })
+            .map(|idx| self.children[idx].as_ref().expect("child must exist"))
             .ok()
     }
 
     fn child_mut(&mut self, key: u8) -> Option<&mut T> {
         self.index_of_key(key)
-            .map(|idx| {
-                self.children[idx]
-                    .as_mut()
-                    .expect("child must exist")
-            })
+            .map(|idx| self.children[idx].as_mut().expect("child must exist"))
             .ok()
     }
 
