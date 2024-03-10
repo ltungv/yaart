@@ -145,7 +145,7 @@ where
 
     pub fn delete(&mut self, key: &[u8], depth: usize) -> Option<Leaf<K, V>> {
         let Self::Inner(inner) = self else {
-            unreachable!("can not call delete on a leaf node");
+            unreachable!("can not delete child on a leaf node");
         };
         let deleted = inner.delete_recursive(key, depth);
         if let Some(node) = inner.shrink() {

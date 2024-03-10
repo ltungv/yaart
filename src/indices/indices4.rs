@@ -127,7 +127,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
         let key = self.indices.keys[self.idx as usize];
         let child = self.indices.children[self.idx as usize]
             .as_ref()
-            .expect("key must point to some child");
+            .expect("child must exist");
         self.idx += 1;
         Some((key, child))
     }
