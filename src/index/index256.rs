@@ -1,15 +1,15 @@
-use super::{Indices, Indices48};
+use super::{Index, Index48};
 
-/// A data structure for holding indices that uses 2 arrays of the same size to map from byte keys
+/// A data structure for holding index that uses 2 arrays of the same size to map from byte keys
 /// to their children. The keys and pointers are stored at corresponding positions and the keys are
 /// sorted.
 #[derive(Debug)]
-pub struct Indices256<T> {
+pub struct Index256<T> {
     pub(super) len: u16,
     pub(super) children: [Option<T>; 256],
 }
 
-impl<T> Default for Indices256<T> {
+impl<T> Default for Index256<T> {
     fn default() -> Self {
         Self {
             len: 0,
@@ -18,20 +18,20 @@ impl<T> Default for Indices256<T> {
     }
 }
 
-impl<'a, T> IntoIterator for &'a Indices256<T> {
+impl<'a, T> IntoIterator for &'a Index256<T> {
     type Item = (u8, &'a T);
 
     type IntoIter = Iter<'a, T>;
 
     fn into_iter(self) -> Self::IntoIter {
         Iter {
-            indices: self,
+            index: self,
             key: 0,
         }
     }
 }
 
-impl<T> Indices<T> for Indices256<T> {
+impl<T> Index<T> for Index256<T> {
     fn len(&self) -> usize {
         self.len as usize
     }
@@ -65,9 +65,9 @@ impl<T> Indices<T> for Indices256<T> {
     }
 }
 
-impl<T> From<&mut Indices48<T>> for Indices256<T> {
-    fn from(other: &mut Indices48<T>) -> Self {
-        let mut indices = Self::default();
+impl<T> From<&mut Index48<T>> for Index256<T> {
+    fn from(other: &mut Index48<T>) -> Self {
+        let mut index = Self::default();
         for key in 0..=255 {
             let idx_old = other.keys[key];
             if idx_old == 0 {
@@ -75,18 +75,18 @@ impl<T> From<&mut Indices48<T>> for Indices256<T> {
             }
             other.keys[key] = 0;
             let child = other.children[idx_old as usize - 1].take();
-            indices.children[key] = child;
+            index.children[key] = child;
         }
-        indices.len = u16::from(other.len);
+        index.len = u16::from(other.len);
         other.len = 0;
-        indices
+        index
     }
 }
 
-/// An iterator over the indices and their children.
+/// An iterator over the index and their children.
 #[derive(Debug)]
 pub struct Iter<'a, T> {
-    indices: &'a Indices256<T>,
+    index: &'a Index256<T>,
     key: u16,
 }
 
@@ -97,7 +97,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
         loop {
             let key = u8::try_from(self.key).ok()?;
             self.key += 1;
-            if let Some(child) = &self.indices.child_ref(key) {
+            if let Some(child) = &self.index.child_ref(key) {
                 return Some((key, child));
             }
         }

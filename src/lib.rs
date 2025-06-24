@@ -10,7 +10,7 @@
 )]
 #![warn(rustdoc::all, clippy::pedantic, clippy::nursery)]
 
-mod indices;
+mod index;
 mod node;
 
 use std::{borrow::Borrow, rc::Rc};

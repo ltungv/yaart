@@ -1,22 +1,22 @@
-use super::{ordered_insert, ordered_remove, Indices, Indices4, Indices48};
+use super::{ordered_insert, ordered_remove, Index, Index4, Index48};
 
-/// A data structure for holding indices that uses 2 arrays of the same size to map from byte keys
+/// A data structure for holding index that uses 2 arrays of the same size to map from byte keys
 /// to their children. The keys and pointers are stored at corresponding positions and the keys are
 /// sorted.
 #[derive(Debug)]
-pub struct Indices16<T> {
+pub struct Index16<T> {
     pub(super) len: u8,
     pub(super) keys: [u8; 16],
     pub(super) children: [Option<T>; 16],
 }
 
-impl<T> Indices16<T> {
+impl<T> Index16<T> {
     fn index_of_key(&self, key: u8) -> Result<usize, usize> {
         self.keys[..self.len as usize].binary_search(&key)
     }
 }
 
-impl<T> Default for Indices16<T> {
+impl<T> Default for Index16<T> {
     fn default() -> Self {
         Self {
             len: 0,
@@ -26,20 +26,20 @@ impl<T> Default for Indices16<T> {
     }
 }
 
-impl<'a, T> IntoIterator for &'a Indices16<T> {
+impl<'a, T> IntoIterator for &'a Index16<T> {
     type Item = (u8, &'a T);
 
     type IntoIter = Iter<'a, T>;
 
     fn into_iter(self) -> Self::IntoIter {
         Iter {
-            indices: self,
+            index: self,
             idx: 0,
         }
     }
 }
 
-impl<T> Indices<T> for Indices16<T> {
+impl<T> Index<T> for Index16<T> {
     fn len(&self) -> usize {
         self.len as usize
     }
@@ -90,22 +90,22 @@ impl<T> Indices<T> for Indices16<T> {
     }
 }
 
-impl<T> From<&mut Indices4<T>> for Indices16<T> {
-    fn from(other: &mut Indices4<T>) -> Self {
-        let mut indices = Self::default();
+impl<T> From<&mut Index4<T>> for Index16<T> {
+    fn from(other: &mut Index4<T>) -> Self {
+        let mut index = Self::default();
         for i in 0..other.len as usize {
-            indices.keys[i] = other.keys[i];
-            indices.children[i] = other.children[i].take();
+            index.keys[i] = other.keys[i];
+            index.children[i] = other.children[i].take();
         }
-        indices.len = other.len;
+        index.len = other.len;
         other.len = 0;
-        indices
+        index
     }
 }
 
-impl<T> From<&mut Indices48<T>> for Indices16<T> {
-    fn from(other: &mut Indices48<T>) -> Self {
-        let mut indices = Self::default();
+impl<T> From<&mut Index48<T>> for Index16<T> {
+    fn from(other: &mut Index48<T>) -> Self {
+        let mut index = Self::default();
         for key in 0..=255 {
             let idx_old = other.keys[key as usize];
             if idx_old == 0 {
@@ -113,20 +113,20 @@ impl<T> From<&mut Indices48<T>> for Indices16<T> {
             }
             other.keys[key as usize] = 0;
             let child = other.children[idx_old as usize - 1].take();
-            let idx_new = indices.len as usize;
-            indices.len += 1;
-            indices.keys[idx_new] = key;
-            indices.children[idx_new] = child;
+            let idx_new = index.len as usize;
+            index.len += 1;
+            index.keys[idx_new] = key;
+            index.children[idx_new] = child;
         }
         other.len = 0;
-        indices
+        index
     }
 }
 
-/// An iterator over the indices and their children.
+/// An iterator over the index and their children.
 #[derive(Debug)]
 pub struct Iter<'a, T> {
-    indices: &'a Indices16<T>,
+    index: &'a Index16<T>,
     idx: u8,
 }
 
@@ -134,11 +134,11 @@ impl<'a, T> Iterator for Iter<'a, T> {
     type Item = (u8, &'a T);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.idx >= self.indices.len {
+        if self.idx >= self.index.len {
             return None;
         }
-        let key = self.indices.keys[self.idx as usize];
-        let child = self.indices.children[self.idx as usize]
+        let key = self.index.keys[self.idx as usize];
+        let child = self.index.children[self.idx as usize]
             .as_ref()
             .expect("child must exist");
         self.idx += 1;

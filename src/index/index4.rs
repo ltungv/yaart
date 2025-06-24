@@ -1,13 +1,13 @@
-use super::{ordered_insert, ordered_remove, Indices, Indices16};
+use super::{ordered_insert, ordered_remove, Index, Index16};
 
 #[derive(Debug)]
-pub struct Indices4<T> {
+pub struct Index4<T> {
     pub(super) len: u8,
     pub(super) keys: [u8; 4],
     pub(super) children: [Option<T>; 4],
 }
 
-impl<T> Indices4<T> {
+impl<T> Index4<T> {
     pub fn free(&mut self) -> (u8, T) {
         self.len -= 1;
         let key = ordered_remove(&mut self.keys, 0);
@@ -24,7 +24,7 @@ impl<T> Indices4<T> {
     }
 }
 
-impl<T> Default for Indices4<T> {
+impl<T> Default for Index4<T> {
     fn default() -> Self {
         Self {
             len: 0,
@@ -34,20 +34,20 @@ impl<T> Default for Indices4<T> {
     }
 }
 
-impl<'a, T> IntoIterator for &'a Indices4<T> {
+impl<'a, T> IntoIterator for &'a Index4<T> {
     type Item = (u8, &'a T);
 
     type IntoIter = Iter<'a, T>;
 
     fn into_iter(self) -> Self::IntoIter {
         Iter {
-            indices: self,
+            index: self,
             idx: 0,
         }
     }
 }
 
-impl<T> Indices<T> for Indices4<T> {
+impl<T> Index<T> for Index4<T> {
     fn len(&self) -> usize {
         self.len as usize
     }
@@ -95,23 +95,23 @@ impl<T> Indices<T> for Indices4<T> {
     }
 }
 
-impl<T> From<&mut Indices16<T>> for Indices4<T> {
-    fn from(other: &mut Indices16<T>) -> Self {
-        let mut indices = Self::default();
+impl<T> From<&mut Index16<T>> for Index4<T> {
+    fn from(other: &mut Index16<T>) -> Self {
+        let mut index = Self::default();
         for i in 0..other.len as usize {
-            indices.keys[i] = other.keys[i];
-            indices.children[i] = other.children[i].take();
+            index.keys[i] = other.keys[i];
+            index.children[i] = other.children[i].take();
         }
-        indices.len = other.len;
+        index.len = other.len;
         other.len = 0;
-        indices
+        index
     }
 }
 
-/// An iterator over the indices and their children.
+/// An iterator over the index and their children.
 #[derive(Debug)]
 pub struct Iter<'a, T> {
-    indices: &'a Indices4<T>,
+    index: &'a Index4<T>,
     idx: u8,
 }
 
@@ -119,11 +119,11 @@ impl<'a, T> Iterator for Iter<'a, T> {
     type Item = (u8, &'a T);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.idx >= self.indices.len {
+        if self.idx >= self.index.len {
             return None;
         }
-        let key = self.indices.keys[self.idx as usize];
-        let child = self.indices.children[self.idx as usize]
+        let key = self.index.keys[self.idx as usize];
+        let child = self.index.children[self.idx as usize]
             .as_ref()
             .expect("child must exist");
         self.idx += 1;
