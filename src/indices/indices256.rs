@@ -9,15 +9,11 @@ pub struct Indices256<T> {
     pub(super) children: [Option<T>; 256],
 }
 
-impl<T> Indices256<T> {
-    const NONE: Option<T> = None;
-}
-
 impl<T> Default for Indices256<T> {
     fn default() -> Self {
         Self {
             len: 0,
-            children: [Self::NONE; 256],
+            children: [const { None }; 256],
         }
     }
 }

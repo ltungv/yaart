@@ -11,8 +11,6 @@ pub struct Indices16<T> {
 }
 
 impl<T> Indices16<T> {
-    const NONE: Option<T> = None;
-
     fn index_of_key(&self, key: u8) -> Result<usize, usize> {
         self.keys[..self.len as usize].binary_search(&key)
     }
@@ -23,7 +21,7 @@ impl<T> Default for Indices16<T> {
         Self {
             len: 0,
             keys: [0; 16],
-            children: [Self::NONE; 16],
+            children: [const { None }; 16],
         }
     }
 }

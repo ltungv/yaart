@@ -8,8 +8,6 @@ pub struct Indices4<T> {
 }
 
 impl<T> Indices4<T> {
-    const NONE: Option<T> = None;
-
     pub fn free(&mut self) -> (u8, T) {
         self.len -= 1;
         let key = ordered_remove(&mut self.keys, 0);
@@ -31,7 +29,7 @@ impl<T> Default for Indices4<T> {
         Self {
             len: 0,
             keys: [0; 4],
-            children: [Self::NONE; 4],
+            children: [const { None }; 4],
         }
     }
 }

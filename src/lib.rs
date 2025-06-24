@@ -1,18 +1,19 @@
 //! # Adaptive Radix Tree
 
-#![warn(
-    clippy::pedantic,
-    clippy::cargo,
-    clippy::nursery,
-    rustdoc::all,
-    missing_debug_implementations
+#![deny(
+    clippy::all,
+    rust_2018_idioms,
+    rust_2024_compatibility,
+    rust_2021_compatibility,
+    missing_debug_implementations,
+    missing_docs
 )]
-#![deny(clippy::all, missing_docs, rust_2018_idioms, rust_2021_compatibility)]
+#![warn(rustdoc::all, clippy::pedantic, clippy::nursery)]
 
 mod indices;
 mod node;
 
-use std::borrow::Borrow;
+use std::{borrow::Borrow, rc::Rc};
 
 use self::node::{debug_print, Node};
 
@@ -69,9 +70,7 @@ where
         K: Borrow<Q>,
         Q: BytesComparable + ?Sized,
     {
-        let Some(mut root) = self.root.take() else {
-            return None;
-        };
+        let mut root = self.root.take()?;
         // Handles special case when the root is a leaf. Otherwise, start deleting from within the inner node.
         let Node::Leaf(leaf) = root else {
             let deleted = root.delete(key.bytes().as_ref(), 0).map(|leaf| leaf.value);
@@ -82,7 +81,7 @@ where
         if !leaf.match_key(key.bytes().as_ref()) {
             self.root = Some(Node::Leaf(leaf));
             return None;
-        };
+        }
         Some(leaf.value)
     }
 
@@ -203,6 +202,14 @@ impl BytesComparable for String {
     }
 }
 
+impl BytesComparable for Rc<str> {
+    type Target<'a> = &'a [u8];
+
+    fn bytes(&self) -> Self::Target<'_> {
+        self.as_bytes()
+    }
+}
+
 impl BytesComparable for str {
     type Target<'a> = &'a [u8];
 
@@ -212,7 +219,10 @@ impl BytesComparable for str {
 }
 
 impl BytesComparable for &str {
-    type Target<'a> = &'a [u8] where Self: 'a ;
+    type Target<'a>
+        = &'a [u8]
+    where
+        Self: 'a;
 
     fn bytes(&self) -> Self::Target<'_> {
         self.as_bytes()
@@ -236,7 +246,10 @@ impl BytesComparable for [u8] {
 }
 
 impl BytesComparable for &[u8] {
-    type Target<'a> = &'a [u8] where Self: 'a;
+    type Target<'a>
+        = &'a [u8]
+    where
+        Self: 'a;
 
     fn bytes(&self) -> Self::Target<'_> {
         self
@@ -245,9 +258,9 @@ impl BytesComparable for &[u8] {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, ops::Range};
+    use std::{collections::BTreeMap, ops::Range};
 
-    use rand::{distributions::Alphanumeric, seq::SliceRandom, Rng};
+    use rand::{distr::Alphanumeric, seq::SliceRandom, Rng};
 
     use crate::ART;
 
@@ -257,7 +270,7 @@ mod tests {
         suffix_size: usize,
     ) -> Vec<String> {
         let random_string = |size: usize| {
-            rand::thread_rng()
+            rand::rng()
                 .sample_iter(Alphanumeric)
                 .map(char::from)
                 .take(size)
@@ -286,18 +299,18 @@ mod tests {
                 keys.push(key);
             }
         }
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         keys.shuffle(&mut rng);
         keys
     }
 
     #[test]
     fn test_insert_tree_tiny() {
-        let mut tree = ART::<String, String>::default();
-        tree.insert("hell".to_string(), "boy".to_string());
-        tree.insert("hello".to_string(), "world".to_string());
-        let v0 = tree.search("hell");
-        let v1 = tree.search("hello");
+        let mut radix = ART::<String, String>::default();
+        radix.insert("hell".to_string(), "boy".to_string());
+        radix.insert("hello".to_string(), "world".to_string());
+        let v0 = radix.search("hell");
+        let v1 = radix.search("hello");
         assert_eq!(v0.map(String::as_str), Some("boy"));
         assert_eq!(v1.map(String::as_str), Some("world"));
     }
@@ -305,21 +318,23 @@ mod tests {
     #[test]
     fn test_all_operations() {
         let keys = get_key_samples(0..256, 256, 64);
-        let mut rng = rand::thread_rng();
-        let mut tree = ART::<_, _, 10>::default();
-        let mut hash = HashMap::new();
+        let mut rng = rand::rng();
+        let mut radix = ART::<_, _, 10>::default();
+        let mut btree = BTreeMap::new();
 
         for key in keys {
-            let v: u32 = rng.gen();
-            tree.insert(key.clone(), v);
-            hash.insert(key.clone(), v);
+            let v: u32 = rng.random();
+            radix.insert(key.clone(), v);
+            btree.insert(key.clone(), v);
         }
 
-        for (k, v) in &hash {
-            assert_eq!(tree.search(k), Some(v));
-            assert_eq!(tree.delete(k), Some(*v));
-            assert_eq!(tree.search(k), None);
-            assert_eq!(tree.delete(k), None);
+        assert_eq!(radix.min(), btree.first_key_value());
+        assert_eq!(radix.max(), btree.last_key_value());
+        for (k, v) in &btree {
+            assert_eq!(radix.search(k), Some(v));
+            assert_eq!(radix.delete(k), Some(*v));
+            assert_eq!(radix.search(k), None);
+            assert_eq!(radix.delete(k), None);
         }
     }
 }

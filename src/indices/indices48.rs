@@ -11,8 +11,6 @@ pub struct Indices48<T> {
 }
 
 impl<T> Indices48<T> {
-    const NONE: Option<T> = None;
-
     const fn index_of_key(&self, key: u8) -> Option<usize> {
         let idx = self.keys[key as usize];
         if idx == 0 {
@@ -27,7 +25,7 @@ impl<T> Default for Indices48<T> {
         Self {
             len: 0,
             keys: [0; 256],
-            children: [Self::NONE; 48],
+            children: [const { None }; 48],
         }
     }
 }
@@ -115,7 +113,8 @@ impl<T> From<&mut Indices256<T>> for Indices48<T> {
     fn from(other: &mut Indices256<T>) -> Self {
         let mut indices = Self::default();
         for key in 0..=255 {
-            if let Some(child) = other.children[key].take() {
+            let child = other.children[key].take();
+            if let Some(child) = child {
                 indices.keys[key] = indices.len + 1;
                 indices.children[indices.len as usize] = Some(child);
                 indices.len += 1;

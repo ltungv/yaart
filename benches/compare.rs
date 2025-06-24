@@ -1,13 +1,14 @@
-use std::{collections::BTreeMap, ops::Range};
+use std::{collections::BTreeMap, rc::Rc};
 
+use criterion::{criterion_group, criterion_main, Criterion};
 use rand::{distr::Alphanumeric, seq::SliceRandom, Rng};
 use yaart::ART;
 
-fn get_key_samples(
-    prefix_sizes: Range<usize>,
+fn get_samples(
+    prefix_sizes: std::ops::Range<usize>,
     suffix_count: usize,
     suffix_size: usize,
-) -> Vec<String> {
+) -> Vec<(Rc<str>, u32)> {
     let random_string = |size: usize| {
         rand::rng()
             .sample_iter(Alphanumeric)
@@ -15,6 +16,7 @@ fn get_key_samples(
             .take(size)
             .collect::<String>()
     };
+    let mut rng = rand::rng();
     let mut keys = Vec::new();
     for prefix_size in prefix_sizes {
         let prefix1: String = random_string(prefix_size);
@@ -35,32 +37,39 @@ fn get_key_samples(
                 }
             }
             key.push_str(&random_string(suffix_size));
-            keys.push(key);
+            keys.push((Rc::from(key), rng.random()));
         }
     }
-    let mut rng = rand::rng();
     keys.shuffle(&mut rng);
     keys
 }
 
-fn main() {
-    let keys = get_key_samples(3..24, 32, 4);
-    let mut rng = rand::rng();
-    let mut radix = ART::<_, _, 10>::default();
-    let mut btree = BTreeMap::new();
-
-    for key in &keys {
-        let v: u32 = rng.random();
-        radix.insert(key.clone(), v);
-        btree.insert(key.clone(), v);
-    }
-
-    assert_eq!(radix.min(), btree.first_key_value());
-    assert_eq!(radix.max(), btree.last_key_value());
-    for (k, v) in &btree {
-        assert_eq!(radix.search(k), Some(v));
-    }
-
-    println!("================================");
-    println!("{:?}", radix);
+pub fn compare(c: &mut Criterion) {
+    c.bench_function("radix", |b| {
+        b.iter_batched(
+            || get_samples(3..24, 32, 4),
+            |samples| {
+                let mut radix = ART::<_, _, 10>::default();
+                for (k, v) in samples.iter() {
+                    radix.insert(k.clone(), *v);
+                }
+            },
+            criterion::BatchSize::LargeInput,
+        )
+    });
+    c.bench_function("btree", |b| {
+        b.iter_batched(
+            || get_samples(3..24, 32, 4),
+            |samples| {
+                let mut btree = BTreeMap::new();
+                for (k, v) in samples.iter() {
+                    btree.insert(k.clone(), *v);
+                }
+            },
+            criterion::BatchSize::LargeInput,
+        )
+    });
 }
+
+criterion_group!(benches, compare);
+criterion_main!(benches);
