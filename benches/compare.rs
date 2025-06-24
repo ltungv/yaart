@@ -1,22 +1,23 @@
 use std::{collections::BTreeMap, rc::Rc};
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use rand::{distr::Alphanumeric, seq::SliceRandom, Rng};
+use rand::{distr::Alphanumeric, seq::SliceRandom, Rng, SeedableRng};
 use yaart::ART;
 
 fn get_samples(
+    seed: u64,
     prefix_sizes: std::ops::Range<usize>,
     suffix_count: usize,
     suffix_size: usize,
 ) -> Vec<(Rc<str>, u32)> {
     let random_string = |size: usize| {
-        rand::rng()
+        rand::rngs::StdRng::seed_from_u64(seed)
             .sample_iter(Alphanumeric)
             .map(char::from)
             .take(size)
             .collect::<String>()
     };
-    let mut rng = rand::rng();
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
     let mut keys = Vec::new();
     for prefix_size in prefix_sizes {
         let prefix1: String = random_string(prefix_size);
@@ -45,9 +46,34 @@ fn get_samples(
 }
 
 pub fn compare(c: &mut Criterion) {
-    c.bench_function("radix", |b| {
+    let seed: u64 = rand::random();
+    c.bench_function("btree", |b| {
         b.iter_batched(
-            || get_samples(3..24, 32, 4),
+            || get_samples(seed, 3..24, 32, 4),
+            |samples| {
+                let mut btree = BTreeMap::new();
+                for (k, v) in samples.iter() {
+                    btree.insert(k.clone(), *v);
+                }
+            },
+            criterion::BatchSize::LargeInput,
+        )
+    });
+    c.bench_function("radix8", |b| {
+        b.iter_batched(
+            || get_samples(seed, 3..24, 32, 4),
+            |samples| {
+                let mut radix = ART::<_, _, 8>::default();
+                for (k, v) in samples.iter() {
+                    radix.insert(k.clone(), *v);
+                }
+            },
+            criterion::BatchSize::LargeInput,
+        )
+    });
+    c.bench_function("radix10", |b| {
+        b.iter_batched(
+            || get_samples(seed, 3..24, 32, 4),
             |samples| {
                 let mut radix = ART::<_, _, 10>::default();
                 for (k, v) in samples.iter() {
@@ -57,13 +83,13 @@ pub fn compare(c: &mut Criterion) {
             criterion::BatchSize::LargeInput,
         )
     });
-    c.bench_function("btree", |b| {
+    c.bench_function("radix12", |b| {
         b.iter_batched(
-            || get_samples(3..24, 32, 4),
+            || get_samples(seed, 3..24, 32, 4),
             |samples| {
-                let mut btree = BTreeMap::new();
+                let mut radix = ART::<_, _, 12>::default();
                 for (k, v) in samples.iter() {
-                    btree.insert(k.clone(), *v);
+                    radix.insert(k.clone(), *v);
                 }
             },
             criterion::BatchSize::LargeInput,

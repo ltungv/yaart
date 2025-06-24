@@ -12,6 +12,7 @@
 
 mod art;
 mod bytes_comparable;
+mod compressed_path;
 mod index;
 mod node;
 
