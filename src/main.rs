@@ -1,66 +1,65 @@
-use std::{collections::BTreeMap, ops::Range};
+use std::ops::Range;
 
-use rand::{distr::Alphanumeric, seq::SliceRandom, Rng};
+use rand::{
+    distr::{Alphanumeric, Distribution, StandardUniform},
+    seq::SliceRandom,
+    Rng, SeedableRng,
+};
 use yaart::ART;
 
-fn get_key_samples(
+fn get_samples<T>(
+    seed: u64,
+    prefix_count: usize,
     prefix_sizes: Range<usize>,
     suffix_count: usize,
     suffix_size: usize,
-) -> Vec<String> {
-    let random_string = |size: usize| {
-        rand::rng()
+) -> Vec<(String, T)>
+where
+    StandardUniform: Distribution<T> + Distribution<u64>,
+{
+    let random_string = |seed: u64, size: usize| {
+        rand::rngs::StdRng::seed_from_u64(seed)
             .sample_iter(Alphanumeric)
             .map(char::from)
             .take(size)
             .collect::<String>()
     };
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
     let mut keys = Vec::new();
     for prefix_size in prefix_sizes {
-        let prefix1: String = random_string(prefix_size);
-        let prefix2: String = random_string(prefix_size);
-        let prefix3: String = random_string(prefix_size);
+        let mut prefixes = Vec::default();
+        for _ in 0..prefix_count {
+            prefixes.push(random_string(rng.random(), prefix_size));
+        }
         for suffix_index in 0..suffix_count {
             let mut key = String::new();
-            match suffix_index % 3 {
-                0 => key.push_str(&prefix1),
-                1 => {
-                    key.push_str(&prefix1);
-                    key.push_str(&prefix2);
-                }
-                _ => {
-                    key.push_str(&prefix1);
-                    key.push_str(&prefix2);
-                    key.push_str(&prefix3);
-                }
+            for prefix in prefixes.iter().take(suffix_index % prefix_count) {
+                key.push_str(prefix);
             }
-            key.push_str(&random_string(suffix_size));
-            keys.push(key);
+            key.push_str(&random_string(rng.random(), suffix_size));
+            keys.push((key, rng.random()));
         }
     }
-    let mut rng = rand::rng();
     keys.shuffle(&mut rng);
     keys
 }
 
 fn main() {
-    let keys = get_key_samples(3..24, 32, 4);
-    let mut rng = rand::rng();
-    let mut radix = ART::<_, _, 10>::default();
-    let mut btree = BTreeMap::new();
+    let samples = get_samples::<u32>(rand::random(), 256, 2..18, 1024, 8);
 
-    for key in &keys {
-        let v: u32 = rng.random();
-        radix.insert(key.clone(), v);
-        btree.insert(key.clone(), v);
+    for _ in 0..8 {
+        let mut radix = ART::<_, _, 10>::default();
+        // let mut btree = BTreeMap::new();
+
+        for (k, v) in &samples {
+            radix.insert(k.clone(), *v);
+            // btree.insert(k.clone(), *v);
+        }
     }
 
-    assert_eq!(radix.min(), btree.first_key_value());
-    assert_eq!(radix.max(), btree.last_key_value());
-    for (k, v) in &btree {
-        assert_eq!(radix.search(k), Some(v));
-    }
-
-    println!("================================");
-    println!("{:?}", radix);
+    // assert_eq!(radix.min(), btree.first_key_value());
+    // assert_eq!(radix.max(), btree.last_key_value());
+    // for (k, v) in &btree {
+    //     assert_eq!(radix.search(k), Some(v));
+    // }
 }

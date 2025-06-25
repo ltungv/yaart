@@ -1,9 +1,7 @@
-use std::cmp::min;
-
 use crate::{
     compressed_path::CompressedPath,
     index::{Index, Index16, Index256, Index4, Index48},
-    BytesComparable,
+    BytesComparable, SearchKey,
 };
 
 /// A node in the ART, which can be either an inner node or a leaf node. Leaf nodes hold data of
@@ -37,7 +35,7 @@ where
     /// - `key`: The key to search for.
     /// - `depth`: The number of bytes in the key to skip. This number increases as we go deeper into the tree
     ///   and depends on the length of prefixes along the path.
-    pub fn search(&self, key: &[u8], depth: usize) -> Option<&Leaf<K, V>> {
+    pub fn search(&self, key: SearchKey<&[u8]>, depth: usize) -> Option<&Leaf<K, V>> {
         match &self {
             Self::Leaf(leaf) => {
                 if !leaf.match_key(key) {
@@ -62,26 +60,24 @@ where
             Self::Leaf(leaf) => {
                 // Here we create a scope to avoid borrowing `key` for too long in order to move it into the new leaf.
                 let (path, k_new, k_old) = {
-                    let new_key_bytes = key.bytes();
+                    let new_key_bytes = key.key();
                     // If the leaf's key matches the new key, then update it's value and return early.
-                    if leaf.match_key(new_key_bytes.as_ref()) {
+                    if leaf.match_key(new_key_bytes.into_ref()) {
                         leaf.value = value;
                         return;
                     }
                     // Calculates the common prefix length between the new key and the leaf's key.
-                    let old_key_bytes = leaf.key.bytes();
-                    let prefix_len = longest_common_prefix(
-                        new_key_bytes.as_ref(),
-                        old_key_bytes.as_ref(),
-                        depth,
-                    );
+                    let old_key_bytes = leaf.key.key();
+                    let prefix_len = new_key_bytes
+                        .into_ref()
+                        .common_prefix_len(&old_key_bytes, depth);
                     // Creates a new compressed path from the common prefix. Then gets the new and old byte keys of where
                     // the leaves are placed within the inner node.
                     let new_depth = depth + prefix_len;
                     (
-                        CompressedPath::new(&new_key_bytes.as_ref()[depth..], prefix_len),
-                        byte_at(new_key_bytes.as_ref(), new_depth),
-                        byte_at(old_key_bytes.as_ref(), new_depth),
+                        CompressedPath::new(new_key_bytes.from(depth).as_ref(), prefix_len),
+                        new_key_bytes.get(new_depth),
+                        old_key_bytes.get(new_depth),
                     )
                 };
                 // Replace the current node, then add the old leaf and new leaf as its children.
@@ -98,9 +94,9 @@ where
                 // Find the index at which the new key differs from the inner node's compressed
                 // path.
                 let (prefix_diff, new_byte_key) = {
-                    let key_bytes = key.bytes();
-                    let prefix_diff = inner.first_mismatch_index(key_bytes.as_ref(), depth);
-                    let byte_key = byte_at(key_bytes.as_ref(), depth + prefix_diff);
+                    let key_bytes = key.key();
+                    let prefix_diff = inner.mismatch(key_bytes.into_ref(), depth);
+                    let byte_key = key_bytes.get(depth + prefix_diff);
                     (prefix_diff, byte_key)
                 };
                 // The index at which the new key differs is not covered by the current compressed
@@ -132,12 +128,10 @@ where
                     // common prefix copied from the minimum leaf's key. A new inner node is
                     // created, and we add the old inner node as its child.
                     let byte_key = {
-                        let leaf_key_bytes = leaf.key.bytes();
+                        let leaf_key_bytes = leaf.key.key();
                         let offset = depth + shift;
-                        inner
-                            .path
-                            .shift_with(shift, &leaf_key_bytes.as_ref()[offset..]);
-                        byte_at(leaf_key_bytes.as_ref(), depth + prefix_diff)
+                        inner.path.shift_with(shift, leaf_key_bytes.from(offset));
+                        leaf_key_bytes.get(depth + prefix_diff)
                     };
                     let old_node = std::mem::replace(self, Self::new_inner(path));
                     self.add_child(byte_key, old_node);
@@ -147,7 +141,7 @@ where
         }
     }
 
-    pub fn delete(&mut self, key: &[u8], depth: usize) -> Option<Leaf<K, V>> {
+    pub fn delete(&mut self, key: SearchKey<&[u8]>, depth: usize) -> Option<Leaf<K, V>> {
         let Self::Inner(inner) = self else {
             unreachable!("can not delete child on a leaf node");
         };
@@ -252,23 +246,6 @@ where
     Ok(())
 }
 
-/// Count the number of common elements at the beginning of two slices.
-fn longest_common_prefix<T>(lhs: &[T], rhs: &[T], depth: usize) -> usize
-where
-    T: PartialEq,
-{
-    lhs[depth..]
-        .iter()
-        .zip(rhs[depth..].iter())
-        .take_while(|(x, y)| x == y)
-        .count()
-}
-
-/// Gets the byte at the given position in the slice. If it is out of bounds, then 0 is returned.
-fn byte_at(bytes: &[u8], pos: usize) -> u8 {
-    bytes.get(pos).copied().unwrap_or(0)
-}
-
 #[derive(Debug, Clone)]
 pub struct Leaf<K, V> {
     pub key: K,
@@ -280,8 +257,8 @@ where
     K: BytesComparable,
 {
     /// Check if the key of the leaf exactly matches the given key.
-    pub fn match_key(&self, key: &[u8]) -> bool {
-        self.key.bytes().as_ref() == key
+    pub fn match_key(&self, key: SearchKey<&[u8]>) -> bool {
+        self.key.key().into_ref() == key
     }
 }
 
@@ -304,18 +281,18 @@ impl<K, V, const P: usize> Inner<K, V, P>
 where
     K: BytesComparable,
 {
-    fn search_recursive(&self, key: &[u8], depth: usize) -> Option<&Leaf<K, V>> {
-        if !self.path.match_key(key, depth) {
+    fn search_recursive(&self, key: SearchKey<&[u8]>, depth: usize) -> Option<&Leaf<K, V>> {
+        if !self.path.check(key, depth) {
             return None;
         }
         let next_depth = depth + self.path.prefix_len();
-        let byte_key = byte_at(key, next_depth);
+        let byte_key = key.get(next_depth);
         self.child_ref(byte_key)
             .and_then(|child| child.search(key, next_depth + 1))
     }
 
     fn insert_recursive(&mut self, key: K, value: V, depth: usize) {
-        let byte_key = byte_at(key.bytes().as_ref(), depth);
+        let byte_key = key.key().get(depth);
         if let Some(child) = self.child_mut(byte_key) {
             // Found a child so we recursively insert into it.
             child.insert(key, value, depth + 1);
@@ -326,14 +303,14 @@ where
         }
     }
 
-    fn delete_recursive(&mut self, key: &[u8], depth: usize) -> Option<Leaf<K, V>> {
+    fn delete_recursive(&mut self, key: SearchKey<&[u8]>, depth: usize) -> Option<Leaf<K, V>> {
         // The key doesn't match the prefix compressed path.
-        if !self.path.match_key(key, depth) {
+        if !self.path.check(key, depth) {
             return None;
         }
         // Find the child node corresponding to the key.
         let depth = depth + self.path.prefix_len();
-        let child_key = byte_at(key, depth);
+        let child_key = key.get(depth);
         let child = self.child_mut(child_key)?;
         // Do recursion if the child is an inner node.
         match child {
@@ -449,12 +426,12 @@ where
         None
     }
 
-    fn first_mismatch_index(&self, key: &[u8], depth: usize) -> usize {
-        let len = min(P, self.path.prefix_len());
-        if let Some(idx) = self.path.mismatch(&key[depth..]) {
+    fn mismatch(&self, key: SearchKey<&[u8]>, depth: usize) -> usize {
+        let partial_len = self.path.partial_len();
+        if let Some(idx) = self.path.mismatch(key.from(depth)) {
             return idx;
         }
-        let mut idx = len.min(key.len() - depth);
+        let mut idx = partial_len.min(key.len() - depth);
         if self.path.prefix_len() > P {
             // Prefix is longer than what we've checked, find a leaf. The minimum leaf is
             // guaranteed to contains the longest common prefix of the current compressed path.
@@ -463,7 +440,7 @@ where
                     "a leaf must exist in the tree if the prefix is longer than the compressed path"
                 )
             };
-            idx += longest_common_prefix(leaf.key.bytes().as_ref(), key, depth + idx);
+            idx += leaf.key.key().common_prefix_len(&key, depth + idx);
         }
         idx
     }

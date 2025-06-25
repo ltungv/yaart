@@ -15,6 +15,8 @@ mod bytes_comparable;
 mod compressed_path;
 mod index;
 mod node;
+mod search_key;
 
 pub use art::*;
 pub use bytes_comparable::*;
+pub use search_key::*;

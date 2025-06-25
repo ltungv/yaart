@@ -1,5 +1,7 @@
 use std::ops::Index;
 
+use crate::SearchKey;
+
 /// A partial key is used to support path compression. Only a part of the prefix that matches the
 /// original key is stored in the inner node.
 #[derive(Debug, Clone)]
@@ -21,21 +23,52 @@ impl<const N: usize> Index<usize> for CompressedPath<N> {
 
 impl<const N: usize> AsRef<[u8]> for CompressedPath<N> {
     fn as_ref(&self) -> &[u8] {
-        &self.partial[..self.prefix_len.min(N)]
+        &self.partial[..self.partial_len()]
     }
 }
 
 impl<const N: usize> CompressedPath<N> {
     /// Creates a new partial key from the given key and prefix length. We only copy at most N
     /// bytes from the key to fill the data array.
-    pub fn new(key: &[u8], len: usize) -> Self {
-        let partial_len = len.min(N);
-        let mut data = [0; N];
-        data[..partial_len].copy_from_slice(&key[..partial_len]);
-        Self {
-            prefix_len: len,
-            partial: data,
+    pub fn new(key: &[u8], prefix_len: usize) -> Self {
+        let mut path = Self {
+            prefix_len,
+            partial: [0; N],
+        };
+        let partial_len = path.partial_len();
+        path.partial[..partial_len].copy_from_slice(&key[..partial_len]);
+        path
+    }
+
+    pub const fn prefix_len(&self) -> usize {
+        self.prefix_len
+    }
+
+    pub const fn partial_len(&self) -> usize {
+        if self.prefix_len() > N {
+            N
+        } else {
+            self.prefix_len
         }
+    }
+
+    /// Returns true if the partial key matches the given key. We only check at most N bytes.
+    pub fn check(&self, key: SearchKey<&[u8]>, depth: usize) -> bool {
+        let partial_len = self.partial_len();
+        self.partial[..partial_len]
+            .iter()
+            .zip(key.from(depth))
+            .take_while(|(x, y)| x.eq(y))
+            .count()
+            .eq(&partial_len)
+    }
+
+    /// Returns the position in which this compressed path and the given key differ.
+    pub fn mismatch(&self, key: SearchKey<&[u8]>) -> Option<usize> {
+        self.partial[..self.partial_len()]
+            .iter()
+            .zip(key)
+            .position(|(x, y)| x != y)
     }
 
     /// Pushes a single byte into the partial key. If the data array is full, then the byte will
@@ -58,35 +91,14 @@ impl<const N: usize> CompressedPath<N> {
         self.prefix_len += other.prefix_len;
     }
 
-    /// Returns true if the partial key matches the given key. We only check at most N bytes.
-    pub fn match_key(&self, key: &[u8], depth: usize) -> bool {
-        let partial_len = self.prefix_len.min(N);
-        self.partial[..partial_len]
-            .iter()
-            .zip(key[depth..].iter())
-            .take_while(|(x, y)| x.eq(y))
-            .count()
-            .eq(&partial_len)
-    }
-
-    pub const fn prefix_len(&self) -> usize {
-        self.prefix_len
-    }
-
     pub fn shift(&mut self, shift: usize) {
         self.prefix_len -= shift;
         self.partial.copy_within(shift.., 0);
     }
 
-    pub fn shift_with(&mut self, shift: usize, key: &[u8]) {
+    pub fn shift_with(&mut self, shift: usize, key: SearchKey<&[u8]>) {
         self.prefix_len -= shift;
-        self.partial[..self.prefix_len.min(N)].copy_from_slice(&key[..self.prefix_len.min(N)]);
-    }
-
-    pub fn mismatch(&self, key: &[u8]) -> Option<usize> {
-        self.partial[..self.prefix_len.min(N)]
-            .iter()
-            .zip(key.iter())
-            .position(|(x, y)| x != y)
+        let partial_len = self.partial_len();
+        self.partial[..partial_len].copy_from_slice(&key.as_ref()[..partial_len]);
     }
 }
