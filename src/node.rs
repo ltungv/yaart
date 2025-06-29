@@ -282,7 +282,7 @@ where
     K: BytesComparable,
 {
     fn search_recursive(&self, key: SearchKey<&[u8]>, depth: usize) -> Option<&Leaf<K, V>> {
-        if !self.path.check(key, depth) {
+        if self.path.mismatch(key.from(depth)).is_some() {
             return None;
         }
         let next_depth = depth + self.path.prefix_len();
@@ -305,7 +305,7 @@ where
 
     fn delete_recursive(&mut self, key: SearchKey<&[u8]>, depth: usize) -> Option<Leaf<K, V>> {
         // The key doesn't match the prefix compressed path.
-        if !self.path.check(key, depth) {
+        if self.path.mismatch(key.from(depth)).is_some() {
             return None;
         }
         // Find the child node corresponding to the key.

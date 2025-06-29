@@ -12,6 +12,7 @@ repository = "gitlab.com/letung3105/yaart"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bytemuck = "1.23.1"
 rand = "0.9.1"
 
 [dev-dependencies]

@@ -46,8 +46,8 @@ where
 }
 
 pub fn insert(c: &mut Criterion) {
-    let samples = get_samples::<u32>(rand::random(), 32, 2..18, 256, 8);
-    c.bench_function("btree", |b| {
+    let samples = get_samples::<u32>(rand::random(), 32, 10..11, 256, 8);
+    c.bench_function("btree (insert)", |b| {
         b.iter_batched(
             || &samples,
             |samples| {
@@ -59,7 +59,7 @@ pub fn insert(c: &mut Criterion) {
             criterion::BatchSize::LargeInput,
         )
     });
-    c.bench_function("radix8", |b| {
+    c.bench_function("radix8 (insert)", |b| {
         b.iter_batched(
             || &samples,
             |samples| {
@@ -71,7 +71,7 @@ pub fn insert(c: &mut Criterion) {
             criterion::BatchSize::LargeInput,
         )
     });
-    c.bench_function("radix10", |b| {
+    c.bench_function("radix10 (insert)", |b| {
         b.iter_batched(
             || &samples,
             |samples| {
@@ -83,7 +83,7 @@ pub fn insert(c: &mut Criterion) {
             criterion::BatchSize::LargeInput,
         )
     });
-    c.bench_function("radix12", |b| {
+    c.bench_function("radix12 (insert)", |b| {
         b.iter_batched(
             || &samples,
             |samples| {
@@ -97,5 +97,77 @@ pub fn insert(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, insert);
+pub fn search(c: &mut Criterion) {
+    let samples = get_samples::<u32>(rand::random(), 32, 2..18, 256, 8);
+    c.bench_function("btree (search)", |b| {
+        b.iter_batched(
+            || {
+                let mut btree = BTreeMap::new();
+                for (k, v) in samples.iter() {
+                    btree.insert(k.clone(), *v);
+                }
+                (&samples, btree)
+            },
+            |(samples, tree)| {
+                for (k, v) in samples {
+                    assert_eq!(tree.get(k), Some(v))
+                }
+            },
+            criterion::BatchSize::LargeInput,
+        )
+    });
+    c.bench_function("radix8 (search)", |b| {
+        b.iter_batched(
+            || {
+                let mut radix = ART::<_, _, 8>::default();
+                for (k, v) in samples.iter() {
+                    radix.insert(k.clone(), *v);
+                }
+                (&samples, radix)
+            },
+            |(samples, tree)| {
+                for (k, v) in samples {
+                    assert_eq!(tree.search(k), Some(v))
+                }
+            },
+            criterion::BatchSize::LargeInput,
+        )
+    });
+    c.bench_function("radix10 (search)", |b| {
+        b.iter_batched(
+            || {
+                let mut radix = ART::<_, _, 10>::default();
+                for (k, v) in samples.iter() {
+                    radix.insert(k.clone(), *v);
+                }
+                (&samples, radix)
+            },
+            |(samples, tree)| {
+                for (k, v) in samples {
+                    assert_eq!(tree.search(k), Some(v))
+                }
+            },
+            criterion::BatchSize::LargeInput,
+        )
+    });
+    c.bench_function("radix12 (search)", |b| {
+        b.iter_batched(
+            || {
+                let mut radix = ART::<_, _, 12>::default();
+                for (k, v) in samples.iter() {
+                    radix.insert(k.clone(), *v);
+                }
+                (&samples, radix)
+            },
+            |(samples, tree)| {
+                for (k, v) in samples {
+                    assert_eq!(tree.search(k), Some(v))
+                }
+            },
+            criterion::BatchSize::LargeInput,
+        )
+    });
+}
+
+criterion_group!(benches, insert, search);
 criterion_main!(benches);

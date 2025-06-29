@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::{collections::BTreeMap, ops::Range};
 
 use rand::{
     distr::{Alphanumeric, Distribution, StandardUniform},
@@ -47,19 +47,19 @@ where
 fn main() {
     let samples = get_samples::<u32>(rand::random(), 256, 2..18, 1024, 8);
 
-    for _ in 0..8 {
+    for _ in 0..100 {
         let mut radix = ART::<_, _, 10>::default();
-        // let mut btree = BTreeMap::new();
+        let mut btree = BTreeMap::new();
 
         for (k, v) in &samples {
             radix.insert(k.clone(), *v);
-            // btree.insert(k.clone(), *v);
+            btree.insert(k.clone(), *v);
+        }
+
+        assert_eq!(radix.min(), btree.first_key_value());
+        assert_eq!(radix.max(), btree.last_key_value());
+        for (k, v) in &btree {
+            assert_eq!(radix.search(k), Some(v));
         }
     }
-
-    // assert_eq!(radix.min(), btree.first_key_value());
-    // assert_eq!(radix.max(), btree.last_key_value());
-    // for (k, v) in &btree {
-    //     assert_eq!(radix.search(k), Some(v));
-    // }
 }
