@@ -1,7 +1,7 @@
-//! A tagged pointer is a pointer (concretely a memory address) with additional data associated with
-//! it, such as an indirection bit or reference count. This additional data is often "folded" into
-//! the pointer, meaning stored inline in the data representing the address, taking advantage of
-//! certain properties of memory addressing.
+//! A tagged pointer is a pointer (concretely a memory address) with additional data associated
+//! with it, such as an indirection bit or reference count. This additional data is often "folded"
+//! into the pointer, meaning stored inline in the data representing the address, taking advantage
+//! of certain properties of memory addressing.
 //!
 //! Most architectures are byte-addressable (the smallest addressable unit is a byte), but certain
 //! types of data will often be aligned to the size of the data, often a word or multiple thereof.
@@ -11,12 +11,12 @@
 
 use std::{fmt, mem::align_of, num::NonZeroUsize, ptr::NonNull};
 
-/// A non-nullable pointer carrying a free bits of metadata.
+/// A non-nullable pointer carrying free bits of metadata.
 ///
 /// The `TAG_BITS` const generic determines the number of free least significant bits that must be
 /// available in the representation of the memory address. It is ensured that the pointed-to type's
-/// alignment is sufficient to carry at least `TAG_BITS` free bits. Ths is done at compile time and
-/// any error will be reported by the compiler.
+/// alignment is sufficient to carry at least `TAG_BITS` free bits. The correctness of the memory
+/// representation is checked at compile time and any error will be reported by the compiler.
 #[repr(transparent)]
 pub struct TaggedPtr<P, const TAG_BITS: u32>(NonNull<P>);
 
@@ -39,9 +39,9 @@ impl<P, const TAG_BITS: u32> From<NonNull<P>> for TaggedPtr<P, TAG_BITS> {
     }
 }
 
-impl<P, const TAG_BITS: u32> Into<NonNull<P>> for TaggedPtr<P, TAG_BITS> {
-    fn into(self) -> NonNull<P> {
-        self.as_ptr()
+impl<P, const TAG_BITS: u32> From<TaggedPtr<P, TAG_BITS>> for NonNull<P> {
+    fn from(tagged_ptr: TaggedPtr<P, TAG_BITS>) -> NonNull<P> {
+        tagged_ptr.as_ptr()
     }
 }
 
@@ -74,16 +74,23 @@ impl<P, const TAG_BITS: u32> fmt::Pointer for TaggedPtr<P, TAG_BITS> {
 }
 
 impl<P, const TAG_BITS: u32> TaggedPtr<P, TAG_BITS> {
+    /// The alignment of the pointed-to data.
     pub const ALIGNMENT: usize = align_of::<P>();
+
+    /// The number of free bits in the representation of memory addresses.
     pub const FREE_BITS: u32 = {
         let free_bits = Self::ALIGNMENT.trailing_zeros();
         assert!(free_bits >= TAG_BITS, "insufficient free bits",);
         free_bits
     };
 
+    /// The bit mask for getting a normalized pointer.
     pub const MASK_PTR: usize = usize::MAX << Self::FREE_BITS;
+
+    /// The bit mask for getting the pointer's tags.
     pub const MARK_TAGS: usize = !Self::MASK_PTR;
 
+    /// Returns a tagged pointer based on the given raw pointer if it is not null.
     pub fn new(pointer: *mut P) -> Option<Self> {
         if pointer.is_null() {
             return None;
@@ -91,6 +98,7 @@ impl<P, const TAG_BITS: u32> TaggedPtr<P, TAG_BITS> {
         unsafe { Some(Self::new_unchecked(pointer)) }
     }
 
+    /// Returns a tagged pointer based on the given raw pointer without checking if it is null.
     pub unsafe fn new_unchecked(pointer: *mut P) -> Self {
         let unchecked_ptr = unsafe { NonNull::new_unchecked(pointer) };
         assert_eq!(
@@ -101,17 +109,20 @@ impl<P, const TAG_BITS: u32> TaggedPtr<P, TAG_BITS> {
         Self(unchecked_ptr)
     }
 
+    /// Gets the normalized pointer from the tagged pointer.
     #[inline]
     pub fn as_ptr(self) -> NonNull<P> {
         self.0
             .map_addr(|addr| unsafe { NonZeroUsize::new_unchecked(addr.get() & Self::MASK_PTR) })
     }
 
+    /// Get the tags from the tagged pointer.
     #[inline]
-    pub fn as_tags(&self) -> usize {
+    pub fn as_tags(self) -> usize {
         self.0.addr().get() & Self::MARK_TAGS
     }
 
+    /// Updates the value of the tags in the pointer.
     pub fn tags(&mut self, tags: usize) {
         assert_eq!(tags & Self::MASK_PTR, 0, "overflowing tags");
         let tags = tags & Self::MARK_TAGS;
@@ -184,7 +195,7 @@ mod tests {
 
     #[test]
     fn tags_of_various_sizes() {
-        fn tags_at_capacity<T, const TAG_BITS: u32>()
+        fn assert<T, const TAG_BITS: u32>()
         where
             T: fmt::Debug + Default + PartialEq,
         {
@@ -200,18 +211,18 @@ mod tests {
             assert_eq!(tagged_ptr.as_tags(), tags,);
             assert_eq!(unsafe { &*tagged_ptr.as_ptr().as_ptr() }, &pointee);
         }
-        tags_at_capacity::<u8, 0>();
-        tags_at_capacity::<u16, 1>();
-        tags_at_capacity::<u32, 2>();
-        tags_at_capacity::<u64, 3>();
-        tags_at_capacity::<u128, 4>();
+        assert::<u8, 0>();
+        assert::<u16, 1>();
+        assert::<u32, 2>();
+        assert::<u64, 3>();
+        assert::<u128, 4>();
     }
 
     #[allow(edition_2024_expr_fragment_specifier)]
     #[cfg(target_pointer_width = "64")]
     #[test]
     fn alignment_bits_and_mask_values() {
-        fn assert_tagged_ptr_constants<T, const TAG_BITS: u32>() {
+        fn assert<T, const TAG_BITS: u32>() {
             assert_eq!(
                 TaggedPtr::<T, TAG_BITS>::ALIGNMENT,
                 std::mem::align_of::<T>()
@@ -225,11 +236,11 @@ mod tests {
                 usize::MAX << std::mem::align_of::<T>().trailing_zeros()
             );
         }
-        assert_tagged_ptr_constants::<(), 0>();
-        assert_tagged_ptr_constants::<u8, 0>();
-        assert_tagged_ptr_constants::<u16, 0>();
-        assert_tagged_ptr_constants::<u32, 0>();
-        assert_tagged_ptr_constants::<u64, 0>();
-        assert_tagged_ptr_constants::<u128, 0>();
+        assert::<(), 0>();
+        assert::<u8, 0>();
+        assert::<u16, 0>();
+        assert::<u32, 0>();
+        assert::<u64, 0>();
+        assert::<u128, 0>();
     }
 }
