@@ -15,7 +15,7 @@ pub use leaf::*;
 pub use ptr::*;
 
 use super::{
-    key::AsSearchKey,
+    key::BytesRepr,
     ops::{FullPrefixMismatch, Ops},
     search_key::SearchKey,
 };
@@ -61,7 +61,7 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
         current_depth: usize,
     ) -> (SearchKey<'_>, Option<NodePtr<Leaf<Self::Key, Self::Value>>>)
     where
-        Self::Key: AsSearchKey,
+        Self::Key: BytesRepr,
     {
         let header = self.header();
         let len = header.path.prefix_len();
@@ -72,8 +72,8 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
         // Find the minimum leaf which is guaranteed to have the full prefix of this inner node.
         let leaf_ptr = unsafe { Ops::<Self::Key, Self::Value, PARTIAL_LEN>::minimum(self.min().1) };
         let leaf = unsafe { leaf_ptr.as_ref() };
-        let prefix = leaf.key.key().range(current_depth, len);
-        (prefix, Some(leaf_ptr))
+        let key = SearchKey::new(leaf.key.repr());
+        (key.range(current_depth, len), Some(leaf_ptr))
     }
 
     #[inline]
@@ -83,7 +83,7 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
         current_depth: usize,
     ) -> Result<usize, FullPrefixMismatch<Self::Key, Self::Value, PARTIAL_LEN>>
     where
-        Self::Key: AsSearchKey,
+        Self::Key: BytesRepr,
     {
         let (prefix, leaf) = self.read_full_prefix(current_depth);
         let prefix_len = prefix.common_prefix_len(key.shift(current_depth));

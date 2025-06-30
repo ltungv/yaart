@@ -1,11 +1,11 @@
-use super::{AsSearchKey, KeyMapping};
+use super::{BytesMapping, BytesRepr};
 
 #[derive(Debug)]
 pub struct Identity;
 
-impl<T> KeyMapping<T> for Identity
+impl<T> BytesMapping<T> for Identity
 where
-    T: AsSearchKey,
+    T: BytesRepr,
 {
     type Key = T;
 

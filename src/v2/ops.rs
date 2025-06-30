@@ -1,7 +1,7 @@
 use std::{marker::PhantomData, ops::ControlFlow};
 
 use crate::v2::{
-    key::AsSearchKey,
+    key::BytesRepr,
     raw::{Inner, NodePtr},
     search_key::SearchKey,
 };
@@ -30,7 +30,7 @@ impl<K, V, const PARTIAL_LEN: usize> Ops<K, V, PARTIAL_LEN> {
         search_key: SearchKey<'_>,
     ) -> InsertCursor
     where
-        K: AsSearchKey,
+        K: BytesRepr,
     {
         #[inline]
         fn visit<T, K, V, const PARTIAL_LEN: usize>(
@@ -43,7 +43,7 @@ impl<K, V, const PARTIAL_LEN: usize> Ops<K, V, PARTIAL_LEN> {
         >
         where
             T: Inner<PARTIAL_LEN, Key = K, Value = V>,
-            K: AsSearchKey,
+            K: BytesRepr,
         {
             let node = unsafe { node_ptr.as_ref() };
             match node.match_full_prefix(search_key, *current_depth) {

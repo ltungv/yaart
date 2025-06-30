@@ -1,11 +1,11 @@
-use super::{KeyMapping, Mapped, OrderedSearchKey};
+use super::{BytesMapping, Mapped, OrderedBytesRepr};
 
 #[derive(Debug)]
 pub struct ToBigEndian;
 
 macro_rules! impl_to_big_endian_for_integer {
     ($signed:ty, $unsigned:ty) => {
-        impl KeyMapping<$signed> for ToBigEndian {
+        impl BytesMapping<$signed> for ToBigEndian {
             type Key = [u8; std::mem::size_of::<$signed>()];
 
             fn to_bytes(value: $signed) -> Self::Key {
@@ -19,7 +19,7 @@ macro_rules! impl_to_big_endian_for_integer {
             }
         }
 
-        impl KeyMapping<$unsigned> for ToBigEndian {
+        impl BytesMapping<$unsigned> for ToBigEndian {
             type Key = [u8; std::mem::size_of::<$unsigned>()];
 
             fn to_bytes(value: $unsigned) -> Self::Key {
@@ -55,8 +55,8 @@ macro_rules! impl_to_big_endian_for_integer {
             }
         }
 
-        impl OrderedSearchKey for Mapped<ToBigEndian, $signed> {}
-        impl OrderedSearchKey for Mapped<ToBigEndian, $unsigned> {}
+        impl OrderedBytesRepr for Mapped<ToBigEndian, $signed> {}
+        impl OrderedBytesRepr for Mapped<ToBigEndian, $unsigned> {}
     };
 }
 

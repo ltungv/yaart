@@ -4,15 +4,13 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use crate::v2::search_key::SearchKey;
-
-use super::{AsSearchKey, KeyMapping};
+use super::{BytesMapping, BytesRepr};
 
 #[derive(Debug)]
 #[repr(transparent)]
 pub struct Mapped<M, T>
 where
-    M: KeyMapping<T>,
+    M: BytesMapping<T>,
 {
     key: M::Key,
     _marker: PhantomData<(M, T)>,
@@ -20,14 +18,14 @@ where
 
 impl<M, T> Copy for Mapped<M, T>
 where
-    M: KeyMapping<T>,
+    M: BytesMapping<T>,
     M::Key: Copy,
 {
 }
 
 impl<M, T> Clone for Mapped<M, T>
 where
-    M: KeyMapping<T>,
+    M: BytesMapping<T>,
     M::Key: Clone,
 {
     fn clone(&self) -> Self {
@@ -37,26 +35,26 @@ where
 
 impl<M, T> Hash for Mapped<M, T>
 where
-    M: KeyMapping<T>,
+    M: BytesMapping<T>,
 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.key.key().as_ref().hash(state);
+        self.key.repr().as_ref().hash(state);
     }
 }
 
-impl<M, T> Eq for Mapped<M, T> where M: KeyMapping<T> {}
+impl<M, T> Eq for Mapped<M, T> where M: BytesMapping<T> {}
 impl<M, T> PartialEq for Mapped<M, T>
 where
-    M: KeyMapping<T>,
+    M: BytesMapping<T>,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.key.key() == other.key.key()
+        self.key.repr() == other.key.repr()
     }
 }
 
 impl<M, T> Deref for Mapped<M, T>
 where
-    M: KeyMapping<T>,
+    M: BytesMapping<T>,
 {
     type Target = M::Key;
 
@@ -67,7 +65,7 @@ where
 
 impl<M, T> DerefMut for Mapped<M, T>
 where
-    M: KeyMapping<T>,
+    M: BytesMapping<T>,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.key
@@ -76,7 +74,7 @@ where
 
 impl<M, T> AsRef<M::Key> for Mapped<M, T>
 where
-    M: KeyMapping<T>,
+    M: BytesMapping<T>,
 {
     fn as_ref(&self) -> &M::Key {
         self
@@ -85,25 +83,25 @@ where
 
 impl<M, T> AsMut<M::Key> for Mapped<M, T>
 where
-    M: KeyMapping<T>,
+    M: BytesMapping<T>,
 {
     fn as_mut(&mut self) -> &mut M::Key {
         self
     }
 }
 
-impl<M, T> AsSearchKey for Mapped<M, T>
+impl<M, T> BytesRepr for Mapped<M, T>
 where
-    M: KeyMapping<T>,
+    M: BytesMapping<T>,
 {
-    fn key(&self) -> SearchKey<'_> {
-        self.key.key()
+    fn repr(&self) -> &[u8] {
+        self.key.repr()
     }
 }
 
 impl<M, T> Mapped<M, T>
 where
-    M: KeyMapping<T>,
+    M: BytesMapping<T>,
 {
     pub fn new(value: T) -> Self {
         Self::with_key(M::to_bytes(value))
