@@ -10,7 +10,7 @@ mod tagged_ptr;
 
 use raw::NodePtr;
 
-pub(crate) trait Sealed {}
+trait Sealed {}
 
 struct RadixTreeMap<K, V, const PARTIAL_LEN: usize = 8> {
     state: Option<NonEmptyRadixTree<K, V, PARTIAL_LEN>>,

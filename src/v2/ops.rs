@@ -50,7 +50,7 @@ impl<K, V, const PARTIAL_LEN: usize> Ops<K, V, PARTIAL_LEN> {
                 Err(mismatch) => ControlFlow::Break(mismatch),
                 Ok(prefix_len) => {
                     *current_depth += prefix_len;
-                    ControlFlow::Continue(node.get(search_key.get(*current_depth)))
+                    ControlFlow::Continue(node.get(search_key[*current_depth]))
                 }
             }
         }
