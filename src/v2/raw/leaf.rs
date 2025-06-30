@@ -3,13 +3,13 @@ use crate::v2::Sealed;
 use super::{Node, NodeType};
 
 pub struct Leaf<K, V> {
-    key: K,
-    value: V,
+    pub key: K,
+    pub value: V,
 }
 
 impl<K, V> From<(K, V)> for Leaf<K, V> {
     fn from((key, value): (K, V)) -> Self {
-        Self { key, value }
+        Self::new(key, value)
     }
 }
 

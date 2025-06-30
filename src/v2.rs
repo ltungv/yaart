@@ -3,6 +3,7 @@ use raw::OpaqueNodePtr;
 
 mod compressed_path;
 mod key;
+mod ops;
 mod raw;
 mod search_key;
 mod tagged_ptr;

@@ -66,4 +66,8 @@ impl<const PARTIAL_LEN: usize> CompressedPath<PARTIAL_LEN> {
         path.partial[..partial_len].copy_from_slice(&key[..partial_len]);
         path
     }
+
+    pub fn prefix_len(&self) -> usize {
+        self.prefix_len
+    }
 }

@@ -84,7 +84,7 @@ impl<P, const TAG_BITS: u32> TaggedPtr<P, TAG_BITS> {
         free_bits
     };
 
-    /// The bit mask for getting a normalized pointer.
+    /// The bit mask for getting the normalized pointer.
     pub const MASK_PTR: usize = usize::MAX << Self::FREE_BITS;
 
     /// The bit mask for getting the pointer's tags.
@@ -109,14 +109,14 @@ impl<P, const TAG_BITS: u32> TaggedPtr<P, TAG_BITS> {
         Self(unchecked_ptr)
     }
 
-    /// Gets the normalized pointer from the tagged pointer.
+    /// Gets a normalized pointer from the tagged pointer.
     #[inline]
     pub fn as_ptr(self) -> NonNull<P> {
         self.0
             .map_addr(|addr| unsafe { NonZeroUsize::new_unchecked(addr.get() & Self::MASK_PTR) })
     }
 
-    /// Get the tags from the tagged pointer.
+    /// Gets the tags from the tagged pointer.
     #[inline]
     pub fn as_tags(self) -> usize {
         self.0.addr().get() & Self::MARK_TAGS
@@ -130,9 +130,13 @@ impl<P, const TAG_BITS: u32> TaggedPtr<P, TAG_BITS> {
             NonZeroUsize::new_unchecked(addr.get() & Self::MASK_PTR) | tags
         });
     }
+
+    /// Casts to a pointer of another type.
+    pub fn cast<T>(self) -> TaggedPtr<T, TAG_BITS> {
+        TaggedPtr::from(self.0.cast())
+    }
 }
 
-#[allow(clippy::similar_names)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,7 +222,6 @@ mod tests {
         assert::<u128, 4>();
     }
 
-    #[allow(edition_2024_expr_fragment_specifier)]
     #[cfg(target_pointer_width = "64")]
     #[test]
     fn alignment_bits_and_mask_values() {

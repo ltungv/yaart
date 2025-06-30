@@ -9,7 +9,7 @@ pub use mapped::*;
 pub use to_big_endian::*;
 
 pub trait AsSearchKey {
-    fn key(&self) -> SearchKey<&[u8]>;
+    fn key(&self) -> SearchKey<'_>;
 }
 
 pub trait OrderedSearchKey: AsSearchKey + Ord {}
@@ -25,25 +25,25 @@ pub trait KeyMapping<T> {
 macro_rules! impl_as_search_key_for_integer {
     ($T:ty) => {
         impl AsSearchKey for $T {
-            fn key(&self) -> SearchKey<&[u8]> {
+            fn key(&self) -> SearchKey<'_> {
                 SearchKey::new(bytemuck::bytes_of(self))
             }
         }
 
         impl AsSearchKey for [$T] {
-            fn key(&self) -> SearchKey<&[u8]> {
+            fn key(&self) -> SearchKey<'_> {
                 SearchKey::new(bytemuck::cast_slice(self))
             }
         }
 
         impl AsSearchKey for Vec<$T> {
-            fn key(&self) -> SearchKey<&[u8]> {
+            fn key(&self) -> SearchKey<'_> {
                 SearchKey::new(bytemuck::cast_slice(self))
             }
         }
 
         impl<const N: usize> AsSearchKey for [$T; N] {
-            fn key(&self) -> SearchKey<&[u8]> {
+            fn key(&self) -> SearchKey<'_> {
                 SearchKey::new(bytemuck::cast_slice(self))
             }
         }

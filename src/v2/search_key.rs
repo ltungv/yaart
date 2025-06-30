@@ -1,97 +1,55 @@
-use std::borrow::Borrow;
-
-/// A wrapper around a byte array/vector providing methods working with bytes during tree operations.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct SearchKey<K> {
-    elems: K,
+pub struct SearchKey<'a> {
+    elems: &'a [u8],
 }
 
-impl<K, T> AsRef<T> for SearchKey<K>
-where
-    K: AsRef<T>,
-    T: ?Sized,
-{
-    fn as_ref(&self) -> &T {
-        self.elems.as_ref()
+impl AsRef<[u8]> for SearchKey<'_> {
+    fn as_ref(&self) -> &[u8] {
+        self.elems
     }
 }
 
-impl<K> IntoIterator for SearchKey<K>
-where
-    K: IntoIterator,
-{
-    type Item = K::Item;
+impl<'a> IntoIterator for SearchKey<'a> {
+    type Item = &'a u8;
 
-    type IntoIter = K::IntoIter;
+    type IntoIter = <&'a [u8] as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
         self.elems.into_iter()
     }
 }
 
-impl<K> SearchKey<K> {
+impl<'a> SearchKey<'a> {
     /// Returns a new [`SearchKey`] containing some arbitrary elements.
-    pub const fn new(elems: K) -> Self {
+    pub const fn new(elems: &'a [u8]) -> Self {
         Self { elems }
     }
 
-    /// Returns a new [`SearchKey`] refencing the elements of this
-    /// [`SearchKey`].
-    pub fn into_ref<T>(&self) -> SearchKey<&T>
-    where
-        K: AsRef<T>,
-        T: ?Sized,
-    {
-        SearchKey {
-            elems: self.elems.as_ref(),
-        }
+    pub fn len(self) -> usize {
+        self.elems.len()
     }
 
-    /// Returns whether the [`SearchKey`] is empty.
-    pub fn is_empty<T>(&self) -> bool
-    where
-        K: AsRef<[T]>,
-    {
-        self.elems.as_ref().is_empty()
+    pub fn is_empty(self) -> bool {
+        self.elems.is_empty()
     }
 
-    /// Returns the number of elements in the current [`SearchKey`].
-    pub fn len<T>(&self) -> usize
-    where
-        K: AsRef<[T]>,
-    {
-        self.elems.as_ref().len()
+    pub fn get(self, index: usize) -> u8 {
+        self.elems.get(index).copied().unwrap_or_default()
     }
 
-    /// Returns the element at the given position or a default value if the
-    /// index is out-of-bounds.
-    pub fn get<T>(&self, index: usize) -> T
-    where
-        K: AsRef<[T]>,
-        T: Copy + Default,
-    {
-        self.elems.as_ref().get(index).copied().unwrap_or_default()
-    }
-
-    /// Returns a new [`SearchKey`] containing only the elements starting from
-    /// the given index.
-    pub fn shift<T>(&self, index: usize) -> SearchKey<&[T]>
-    where
-        K: AsRef<[T]>,
-    {
+    pub fn shift(self, index: usize) -> SearchKey<'a> {
         SearchKey {
             elems: &self.elems.as_ref()[index..],
         }
     }
 
-    /// Returns a number of common elements between the prefix of the two given
-    /// search keys.
-    pub fn common_prefix_len<Q, T>(&self, other: &SearchKey<Q>, depth: usize) -> usize
-    where
-        K: AsRef<[T]>,
-        Q: AsRef<[T]>,
-        T: Eq,
-    {
+    pub fn range(self, index: usize, len: usize) -> SearchKey<'a> {
+        SearchKey {
+            elems: &self.elems.as_ref()[index..index + len],
+        }
+    }
+
+    pub fn common_prefix_len<'b>(self, other: SearchKey<'b>, depth: usize) -> usize {
         self.shift(depth)
             .into_iter()
             .zip(other.shift(depth))

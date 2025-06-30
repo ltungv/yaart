@@ -238,6 +238,4 @@ impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
     }
 }
 
-mod tests {
-
-}
+mod tests {}

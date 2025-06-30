@@ -96,7 +96,7 @@ impl<M, T> AsSearchKey for Mapped<M, T>
 where
     M: KeyMapping<T>,
 {
-    fn key(&self) -> SearchKey<&[u8]> {
+    fn key(&self) -> SearchKey<'_> {
         self.key.key()
     }
 }
