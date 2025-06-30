@@ -1,5 +1,7 @@
 use super::{BytesMapping, Mapped, OrderedBytesRepr};
 
+/// A [`BytesMapping`] that maps between integral values and their bytes representation in
+/// big-endian order.
 #[derive(Debug)]
 pub struct ToBigEndian;
 

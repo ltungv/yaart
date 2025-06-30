@@ -10,6 +10,8 @@ mod tagged_ptr;
 
 use raw::NodePtr;
 
+/// A trait that seals other traits to disallow them from being implemented by external
+/// modules/crates.
 trait Sealed {}
 
 struct RadixTreeMap<K, V, const PARTIAL_LEN: usize = 8> {

@@ -79,7 +79,7 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for InnerSorted<K, V, PA
 }
 
 impl<K, V, const PARTIAL_LEN: usize> Node<PARTIAL_LEN> for InnerSorted<K, V, PARTIAL_LEN, 16> {
-    const TYPE: NodeType = NodeType::Inner4;
+    const TYPE: NodeType = NodeType::Inner16;
     type Key = K;
     type Value = V;
 }
@@ -237,5 +237,3 @@ impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
         (keys[n], ptrs[n])
     }
 }
-
-mod tests {}

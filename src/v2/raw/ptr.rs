@@ -94,6 +94,11 @@ impl<K, V, const PARTIAL_LEN: usize> OpaqueNodePtr<K, V, PARTIAL_LEN> {
     pub fn as_type(self) -> NodeType {
         unsafe { std::mem::transmute(self.0.as_tags() as u8) }
     }
+
+    /// Gets the [`ConcreteNodePtr`] represented by this opaque pointer.
+    pub fn as_concrete(self) -> ConcreteNodePtr<K, V, PARTIAL_LEN> {
+        self.into()
+    }
 }
 
 /// An enumeration of different types of node pointer.

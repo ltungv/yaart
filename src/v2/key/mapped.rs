@@ -6,6 +6,8 @@ use std::{
 
 use super::{BytesMapping, BytesRepr};
 
+/// A container for the decomposed bytes resulted from mapping a value of type `T` using the
+/// mapping `M`
 #[derive(Debug)]
 #[repr(transparent)]
 pub struct Mapped<M, T>
@@ -103,10 +105,7 @@ impl<M, T> Mapped<M, T>
 where
     M: BytesMapping<T>,
 {
-    pub fn new(value: T) -> Self {
-        Self::with_key(M::to_bytes(value))
-    }
-
+    /// Creates a new container for some decomposed bytes.
     pub fn with_key(key: M::Key) -> Self {
         Mapped {
             key,
@@ -114,7 +113,13 @@ where
         }
     }
 
-    pub fn get(self) -> T {
+    /// Decomposes a value into its bytes representation.
+    pub fn decompose(value: T) -> Self {
+        Self::with_key(M::to_bytes(value))
+    }
+
+    /// Composes a value from its bytes representation.
+    pub fn compose(self) -> T {
         M::from_bytes(self.key)
     }
 }

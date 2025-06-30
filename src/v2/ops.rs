@@ -61,7 +61,7 @@ impl<K, V, const PARTIAL_LEN: usize> Ops<K, V, PARTIAL_LEN> {
         let mut current_depth = 0;
 
         loop {
-            let lookup_result = match ConcreteNodePtr::from(current_node) {
+            let lookup_result = match current_node.as_concrete() {
                 ConcreteNodePtr::Inner4(node_ptr) => {
                     visit(&mut current_depth, node_ptr, search_key)
                 }
@@ -81,10 +81,11 @@ impl<K, V, const PARTIAL_LEN: usize> Ops<K, V, PARTIAL_LEN> {
         todo!()
     }
 
+    /// Search for the leaf with the minimum key.
     pub unsafe fn minimum(root: OpaqueNodePtr<K, V, PARTIAL_LEN>) -> NodePtr<Leaf<K, V>> {
         let mut current_node = root;
         loop {
-            current_node = match ConcreteNodePtr::from(current_node) {
+            current_node = match current_node.as_concrete() {
                 ConcreteNodePtr::Leaf(node_ptr) => {
                     return node_ptr;
                 }

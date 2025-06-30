@@ -1,5 +1,6 @@
 use super::{BytesMapping, BytesRepr};
 
+/// A [`BytesMapping`] that preserves the representation of a type implementing [`BytesRepr`].
 #[derive(Debug)]
 pub struct Identity;
 
