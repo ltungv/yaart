@@ -1,4 +1,4 @@
-use std::{cmp, error, fmt, mem::MaybeUninit};
+use std::{cmp, error, fmt, mem::MaybeUninit, usize};
 
 use crate::v2::Sealed;
 
@@ -7,11 +7,21 @@ use super::{Header, Inner, Inner256, InnerSorted, Node, NodeType, OpaqueNodePtr}
 #[repr(C)]
 pub struct Inner48<K, V, const PARTIAL_LEN: usize> {
     header: Header<PARTIAL_LEN>,
-    keys: [RestrictedIndex<48>; 48],
+    keys: [RestrictedIndex<48>; 256],
     ptrs: [MaybeUninit<OpaqueNodePtr<K, V, PARTIAL_LEN>>; 48],
 }
 
 impl<K, V, const PARTIAL_LEN: usize> Sealed for Inner48<K, V, PARTIAL_LEN> {}
+
+impl<K, V, const PARTIAL_LEN: usize> From<Header<PARTIAL_LEN>> for Inner48<K, V, PARTIAL_LEN> {
+    fn from(header: Header<PARTIAL_LEN>) -> Self {
+        Self {
+            header,
+            keys: [RestrictedIndex::EMPTY; 256],
+            ptrs: unsafe { MaybeUninit::uninit().assume_init() },
+        }
+    }
+}
 
 impl<K, V, const PARTIAL_LEN: usize> Node<PARTIAL_LEN> for Inner48<K, V, PARTIAL_LEN> {
     const TYPE: NodeType = NodeType::Inner48;
@@ -33,7 +43,7 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for Inner48<K, V, PARTIA
     }
 
     fn header(&self) -> &Header<PARTIAL_LEN> {
-        todo!()
+        &self.header
     }
 
     fn add(
@@ -41,26 +51,64 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for Inner48<K, V, PARTIA
         key_partial: u8,
         child_ptr: OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>,
     ) {
-        todo!()
+        let key_partial_index = key_partial as usize;
+        let child_index = self.keys[key_partial_index];
+        if child_index.is_empty() {
+            let child_index = self.header.children as usize;
+            self.header.children += 1;
+            self.ptrs[child_index].write(child_ptr);
+            self.keys[key_partial_index] =
+                RestrictedIndex::try_from(child_index).expect("node is not full");
+        } else {
+            self.ptrs[usize::from(child_index)].write(child_ptr);
+        };
     }
 
     fn del(
         &mut self,
         key_partial: u8,
     ) -> Option<OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>> {
-        todo!()
+        let key_partial_index = key_partial as usize;
+        let child_index = self.keys[key_partial_index];
+        if child_index.is_empty() {
+            None
+        } else {
+            self.header.children -= 1;
+            self.keys[key_partial_index] = RestrictedIndex::EMPTY;
+            Some(unsafe { self.ptrs[usize::from(child_index)].assume_init_read() })
+        }
     }
 
     fn get(&self, key_partial: u8) -> Option<OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>> {
-        todo!()
+        let key_partial_index = key_partial as usize;
+        let child_index = self.keys[key_partial_index];
+        if child_index.is_empty() {
+            None
+        } else {
+            Some(unsafe { self.ptrs[usize::from(child_index)].assume_init_read() })
+        }
     }
 
     fn min(&self) -> (u8, OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>) {
-        todo!()
+        for key in u8::MIN..=u8::MAX {
+            let child_index = self.keys[key as usize];
+            if !child_index.is_empty() {
+                let child_ptr = unsafe { self.ptrs[usize::from(child_index)].assume_init_read() };
+                return (key, child_ptr);
+            }
+        }
+        unreachable!("node is empty")
     }
 
     fn max(&self) -> (u8, OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>) {
-        todo!()
+        for key in (u8::MIN..=u8::MAX).rev() {
+            let child_index = self.keys[key as usize];
+            if !child_index.is_empty() {
+                let child_ptr = unsafe { self.ptrs[usize::from(child_index)].assume_init_read() };
+                return (key, child_ptr);
+            }
+        }
+        unreachable!("node is empty")
     }
 }
 

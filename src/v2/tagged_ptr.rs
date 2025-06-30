@@ -146,7 +146,9 @@ mod tests {
         T: Default,
     {
         let mut pointee = T::default();
-        let mut tagged_ptr = TaggedPtr::<_, TAG_BITS>::new(&raw mut pointee).unwrap();
+        let mut tagged_ptr =
+            TaggedPtr::<_, TAG_BITS>::new(&raw mut pointee).expect("pointer is not null");
+
         let free_bits = std::mem::align_of::<T>().trailing_zeros();
         tagged_ptr.tags(usize::MAX >> (usize::BITS - free_bits - 1));
     }
@@ -154,7 +156,8 @@ mod tests {
     #[test]
     fn it_works() {
         let mut pointee = "Hello world!";
-        let mut tagged_ptr = TaggedPtr::<&str, 3>::new(&raw mut pointee).unwrap();
+        let mut tagged_ptr =
+            TaggedPtr::<&str, 3>::new(&raw mut pointee).expect("pointer is not null");
 
         // First tags.
         tagged_ptr.tags(0b101);
@@ -204,7 +207,9 @@ mod tests {
             T: fmt::Debug + Default + PartialEq,
         {
             let mut pointee = T::default();
-            let mut tagged_ptr = TaggedPtr::<_, TAG_BITS>::new(&raw mut pointee).unwrap();
+            let mut tagged_ptr =
+                TaggedPtr::<_, TAG_BITS>::new(&raw mut pointee).expect("pointer is not null");
+
             let free_bits = std::mem::align_of::<T>().trailing_zeros();
             let tags = if free_bits == 0 {
                 0

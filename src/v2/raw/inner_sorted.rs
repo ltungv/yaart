@@ -128,10 +128,10 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for InnerSorted<K, V, PA
     }
 }
 
-enum Position {
-    Exact(usize),
-    Shift(usize),
-    Last(usize),
+enum SearchResult {
+    Found(usize),
+    Insert(usize),
+    NotFound(usize),
 }
 
 impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
@@ -152,27 +152,27 @@ impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
     }
 
     #[inline]
-    fn position(&self, key_partial: u8) -> Position {
+    fn search(&self, key_partial: u8) -> SearchResult {
         let keys = self.keys();
         if NUM_CHILDREN < 16 {
             match keys.iter().position(|&k| k >= key_partial) {
-                None => Position::Last(self.header.children as usize),
+                None => SearchResult::NotFound(self.header.children as usize),
                 Some(pos) => {
                     if keys[pos] == key_partial {
-                        Position::Exact(pos)
+                        SearchResult::Found(pos)
                     } else {
-                        Position::Shift(pos)
+                        SearchResult::Insert(pos)
                     }
                 }
             }
         } else {
             match keys.binary_search(&key_partial) {
-                Ok(pos) => Position::Exact(pos),
+                Ok(pos) => SearchResult::Found(pos),
                 Err(pos) => {
                     if pos < keys.len() {
-                        Position::Shift(pos)
+                        SearchResult::Insert(pos)
                     } else {
-                        Position::Last(pos)
+                        SearchResult::NotFound(pos)
                     }
                 }
             }
@@ -186,14 +186,14 @@ impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
 
     #[inline]
     fn add(&mut self, key_partial: u8, child_ptr: OpaqueNodePtr<K, V, PARTIAL_LEN>) {
-        let pos = match self.position(key_partial) {
-            Position::Exact(pos) => pos,
-            Position::Shift(pos) => {
+        let pos = match self.search(key_partial) {
+            SearchResult::Found(pos) => pos,
+            SearchResult::Insert(pos) => {
                 self.keys[pos..].rotate_right(1);
                 self.ptrs[pos..].rotate_right(1);
                 pos
             }
-            Position::Last(pos) => {
+            SearchResult::NotFound(pos) => {
                 self.header.children += 1;
                 pos
             }
@@ -204,7 +204,7 @@ impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
 
     #[inline]
     fn del(&mut self, key_partial: u8) -> Option<OpaqueNodePtr<K, V, PARTIAL_LEN>> {
-        let Position::Exact(pos) = self.position(key_partial) else {
+        let SearchResult::Found(pos) = self.search(key_partial) else {
             return None;
         };
         let child = self.ptrs()[pos];
@@ -216,7 +216,7 @@ impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
 
     #[inline]
     fn get(&self, key_partial: u8) -> Option<OpaqueNodePtr<K, V, PARTIAL_LEN>> {
-        let Position::Exact(pos) = self.position(key_partial) else {
+        let SearchResult::Found(pos) = self.search(key_partial) else {
             return None;
         };
         Some(self.ptrs()[pos])

@@ -8,7 +8,7 @@ use std::{
 
 use crate::v2::tagged_ptr::TaggedPtr;
 
-use super::{Header, Inner256, Inner48, InnerSorted, Leaf, Node, NodeType};
+use super::{Header, Inner, Inner256, Inner48, InnerSorted, Leaf, Node, NodeType};
 
 /// A [`TaggedPtr`] to the header of a node in a tree in which the pointer is tagged with the type
 /// of the node containing the header.
@@ -122,11 +122,24 @@ impl<K, V, const PARTIAL_LEN: usize> From<OpaqueNodePtr<K, V, PARTIAL_LEN>>
 {
     fn from(opaque_ptr: OpaqueNodePtr<K, V, PARTIAL_LEN>) -> Self {
         match opaque_ptr.as_type() {
-            NodeType::Leaf => ConcreteNodePtr::Leaf(opaque_ptr.as_ptr().cast().into()),
-            NodeType::Inner4 => ConcreteNodePtr::Inner4(opaque_ptr.as_ptr().cast().into()),
-            NodeType::Inner16 => ConcreteNodePtr::Inner16(opaque_ptr.as_ptr().cast().into()),
-            NodeType::Inner48 => ConcreteNodePtr::Inner48(opaque_ptr.as_ptr().cast().into()),
-            NodeType::Inner256 => ConcreteNodePtr::Inner256(opaque_ptr.as_ptr().cast().into()),
+            NodeType::Leaf => Self::Leaf(opaque_ptr.as_ptr().cast().into()),
+            NodeType::Inner4 => Self::Inner4(opaque_ptr.as_ptr().cast().into()),
+            NodeType::Inner16 => Self::Inner16(opaque_ptr.as_ptr().cast().into()),
+            NodeType::Inner48 => Self::Inner48(opaque_ptr.as_ptr().cast().into()),
+            NodeType::Inner256 => Self::Inner256(opaque_ptr.as_ptr().cast().into()),
+        }
+    }
+}
+
+impl<K, V, const PARTIAL_LEN: usize> From<ConcreteInnerNodePtr<K, V, PARTIAL_LEN>>
+    for ConcreteNodePtr<K, V, PARTIAL_LEN>
+{
+    fn from(pointer: ConcreteInnerNodePtr<K, V, PARTIAL_LEN>) -> Self {
+        match pointer {
+            ConcreteInnerNodePtr::Inner4(inner_ptr) => Self::Inner4(inner_ptr),
+            ConcreteInnerNodePtr::Inner16(inner_ptr) => Self::Inner16(inner_ptr),
+            ConcreteInnerNodePtr::Inner48(inner_ptr) => Self::Inner48(inner_ptr),
+            ConcreteInnerNodePtr::Inner256(inner_ptr) => Self::Inner256(inner_ptr),
         }
     }
 }
@@ -149,11 +162,11 @@ where
 impl<K, V, const PARTIAL_LEN: usize> Hash for ConcreteNodePtr<K, V, PARTIAL_LEN> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
-            ConcreteNodePtr::Leaf(node_ptr) => node_ptr.0.hash(state),
-            ConcreteNodePtr::Inner4(node_ptr) => node_ptr.0.hash(state),
-            ConcreteNodePtr::Inner16(node_ptr) => node_ptr.0.hash(state),
-            ConcreteNodePtr::Inner48(node_ptr) => node_ptr.0.hash(state),
-            ConcreteNodePtr::Inner256(node_ptr) => node_ptr.0.hash(state),
+            Self::Leaf(node_ptr) => node_ptr.0.hash(state),
+            Self::Inner4(node_ptr) => node_ptr.0.hash(state),
+            Self::Inner16(node_ptr) => node_ptr.0.hash(state),
+            Self::Inner48(node_ptr) => node_ptr.0.hash(state),
+            Self::Inner256(node_ptr) => node_ptr.0.hash(state),
         }
     }
 }
@@ -162,21 +175,11 @@ impl<K, V, const PARTIAL_LEN: usize> Eq for ConcreteNodePtr<K, V, PARTIAL_LEN> {
 impl<K, V, const PARTIAL_LEN: usize> PartialEq for ConcreteNodePtr<K, V, PARTIAL_LEN> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (ConcreteNodePtr::Leaf(lhs_ptr), ConcreteNodePtr::Leaf(rhs_ptr)) => {
-                lhs_ptr.0 == rhs_ptr.0
-            }
-            (ConcreteNodePtr::Inner4(lhs_ptr), ConcreteNodePtr::Inner4(rhs_ptr)) => {
-                lhs_ptr.0 == rhs_ptr.0
-            }
-            (ConcreteNodePtr::Inner16(lhs_ptr), ConcreteNodePtr::Inner16(rhs_ptr)) => {
-                lhs_ptr.0 == rhs_ptr.0
-            }
-            (ConcreteNodePtr::Inner48(lhs_ptr), ConcreteNodePtr::Inner48(rhs_ptr)) => {
-                lhs_ptr.0 == rhs_ptr.0
-            }
-            (ConcreteNodePtr::Inner256(lhs_ptr), ConcreteNodePtr::Inner256(rhs_ptr)) => {
-                lhs_ptr.0 == rhs_ptr.0
-            }
+            (Self::Leaf(lhs_ptr), Self::Leaf(rhs_ptr)) => lhs_ptr.0 == rhs_ptr.0,
+            (Self::Inner4(lhs_ptr), Self::Inner4(rhs_ptr)) => lhs_ptr.0 == rhs_ptr.0,
+            (Self::Inner16(lhs_ptr), Self::Inner16(rhs_ptr)) => lhs_ptr.0 == rhs_ptr.0,
+            (Self::Inner48(lhs_ptr), Self::Inner48(rhs_ptr)) => lhs_ptr.0 == rhs_ptr.0,
+            (Self::Inner256(lhs_ptr), Self::Inner256(rhs_ptr)) => lhs_ptr.0 == rhs_ptr.0,
             _ => false,
         }
     }
@@ -185,23 +188,23 @@ impl<K, V, const PARTIAL_LEN: usize> PartialEq for ConcreteNodePtr<K, V, PARTIAL
 impl<K, V, const PARTIAL_LEN: usize> fmt::Debug for ConcreteNodePtr<K, V, PARTIAL_LEN> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ConcreteNodePtr::Leaf(node_ptr) => f
+            Self::Leaf(node_ptr) => f
                 .debug_tuple("ConcreteNodePtr::Leaf")
                 .field(node_ptr)
                 .finish(),
-            ConcreteNodePtr::Inner4(node_ptr) => f
+            Self::Inner4(node_ptr) => f
                 .debug_tuple("ConcreteNodePtr::Inner4")
                 .field(node_ptr)
                 .finish(),
-            ConcreteNodePtr::Inner16(node_ptr) => f
+            Self::Inner16(node_ptr) => f
                 .debug_tuple("ConcreteNodePtr::Inner16")
                 .field(node_ptr)
                 .finish(),
-            ConcreteNodePtr::Inner48(node_ptr) => f
+            Self::Inner48(node_ptr) => f
                 .debug_tuple("ConcreteNodePtr::Inner48")
                 .field(node_ptr)
                 .finish(),
-            ConcreteNodePtr::Inner256(node_ptr) => f
+            Self::Inner256(node_ptr) => f
                 .debug_tuple("ConcreteNodePtr::Inner256")
                 .field(node_ptr)
                 .finish(),
@@ -212,11 +215,99 @@ impl<K, V, const PARTIAL_LEN: usize> fmt::Debug for ConcreteNodePtr<K, V, PARTIA
 impl<K, V, const PARTIAL_LEN: usize> fmt::Pointer for ConcreteNodePtr<K, V, PARTIAL_LEN> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ConcreteNodePtr::Leaf(node_ptr) => fmt::Pointer::fmt(node_ptr, f),
-            ConcreteNodePtr::Inner4(node_ptr) => fmt::Pointer::fmt(node_ptr, f),
-            ConcreteNodePtr::Inner16(node_ptr) => fmt::Pointer::fmt(node_ptr, f),
-            ConcreteNodePtr::Inner48(node_ptr) => fmt::Pointer::fmt(node_ptr, f),
-            ConcreteNodePtr::Inner256(node_ptr) => fmt::Pointer::fmt(node_ptr, f),
+            Self::Leaf(node_ptr) => fmt::Pointer::fmt(node_ptr, f),
+            Self::Inner4(node_ptr) => fmt::Pointer::fmt(node_ptr, f),
+            Self::Inner16(node_ptr) => fmt::Pointer::fmt(node_ptr, f),
+            Self::Inner48(node_ptr) => fmt::Pointer::fmt(node_ptr, f),
+            Self::Inner256(node_ptr) => fmt::Pointer::fmt(node_ptr, f),
+        }
+    }
+}
+
+/// An enumeration of different types of node pointer.
+pub enum ConcreteInnerNodePtr<K, V, const PARTIAL_LEN: usize> {
+    Inner4(NodePtr<InnerSorted<K, V, PARTIAL_LEN, 4>>),
+    Inner16(NodePtr<InnerSorted<K, V, PARTIAL_LEN, 16>>),
+    Inner48(NodePtr<Inner48<K, V, PARTIAL_LEN>>),
+    Inner256(NodePtr<Inner256<K, V, PARTIAL_LEN>>),
+}
+
+impl<K, V, const PARTIAL_LEN: usize> Copy for ConcreteInnerNodePtr<K, V, PARTIAL_LEN> {}
+impl<K, V, const PARTIAL_LEN: usize> Clone for ConcreteInnerNodePtr<K, V, PARTIAL_LEN> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T, K, V, const PARTIAL_LEN: usize> From<NodePtr<T>> for ConcreteInnerNodePtr<K, V, PARTIAL_LEN>
+where
+    T: Inner<PARTIAL_LEN>,
+{
+    fn from(pointer: NodePtr<T>) -> Self {
+        match T::TYPE {
+            NodeType::Inner4 => Self::Inner4(pointer.as_ptr().cast().into()),
+            NodeType::Inner16 => Self::Inner16(pointer.as_ptr().cast().into()),
+            NodeType::Inner48 => Self::Inner48(pointer.as_ptr().cast().into()),
+            NodeType::Inner256 => Self::Inner256(pointer.as_ptr().cast().into()),
+            _ => unreachable!("invalid inner node type"),
+        }
+    }
+}
+
+impl<K, V, const PARTIAL_LEN: usize> Hash for ConcreteInnerNodePtr<K, V, PARTIAL_LEN> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Self::Inner4(node_ptr) => node_ptr.0.hash(state),
+            Self::Inner16(node_ptr) => node_ptr.0.hash(state),
+            Self::Inner48(node_ptr) => node_ptr.0.hash(state),
+            Self::Inner256(node_ptr) => node_ptr.0.hash(state),
+        }
+    }
+}
+
+impl<K, V, const PARTIAL_LEN: usize> Eq for ConcreteInnerNodePtr<K, V, PARTIAL_LEN> {}
+impl<K, V, const PARTIAL_LEN: usize> PartialEq for ConcreteInnerNodePtr<K, V, PARTIAL_LEN> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Inner4(lhs_ptr), Self::Inner4(rhs_ptr)) => lhs_ptr.0 == rhs_ptr.0,
+            (Self::Inner16(lhs_ptr), Self::Inner16(rhs_ptr)) => lhs_ptr.0 == rhs_ptr.0,
+            (Self::Inner48(lhs_ptr), Self::Inner48(rhs_ptr)) => lhs_ptr.0 == rhs_ptr.0,
+            (Self::Inner256(lhs_ptr), Self::Inner256(rhs_ptr)) => lhs_ptr.0 == rhs_ptr.0,
+            _ => false,
+        }
+    }
+}
+
+impl<K, V, const PARTIAL_LEN: usize> fmt::Debug for ConcreteInnerNodePtr<K, V, PARTIAL_LEN> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Inner4(node_ptr) => f
+                .debug_tuple("ConcreteInnerNodePtr::Inner4")
+                .field(node_ptr)
+                .finish(),
+            Self::Inner16(node_ptr) => f
+                .debug_tuple("ConcreteInnerNodePtr::Inner16")
+                .field(node_ptr)
+                .finish(),
+            Self::Inner48(node_ptr) => f
+                .debug_tuple("ConcreteInnerNodePtr::Inner48")
+                .field(node_ptr)
+                .finish(),
+            Self::Inner256(node_ptr) => f
+                .debug_tuple("ConcreteInnerNodePtr::Inner256")
+                .field(node_ptr)
+                .finish(),
+        }
+    }
+}
+
+impl<K, V, const PARTIAL_LEN: usize> fmt::Pointer for ConcreteInnerNodePtr<K, V, PARTIAL_LEN> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Inner4(node_ptr) => fmt::Pointer::fmt(node_ptr, f),
+            Self::Inner16(node_ptr) => fmt::Pointer::fmt(node_ptr, f),
+            Self::Inner48(node_ptr) => fmt::Pointer::fmt(node_ptr, f),
+            Self::Inner256(node_ptr) => fmt::Pointer::fmt(node_ptr, f),
         }
     }
 }

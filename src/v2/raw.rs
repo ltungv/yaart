@@ -16,7 +16,7 @@ pub use ptr::*;
 
 use super::{
     key::BytesRepr,
-    ops::{FullPrefixMismatch, Ops},
+    ops::{FullPrefixMismatch, Search},
     search_key::SearchKey,
 };
 
@@ -85,7 +85,7 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
             (SearchKey::new(header.path.as_ref()), None)
         } else {
             // Find the minimum leaf which is guaranteed to have the full prefix of this node.
-            let leaf_ptr = unsafe { Ops::minimum(self.min().1) };
+            let leaf_ptr = unsafe { Search::minimum(self.min().1) };
             let leaf = unsafe { leaf_ptr.as_ref() };
             let key = SearchKey::new(leaf.key.repr());
             let prefix = key.range(current_depth, header.path.prefix_len());
@@ -143,7 +143,10 @@ pub enum NodeType {
 
 #[cfg(test)]
 mod tests {
-    use crate::v2::compressed_path::CompressedPath;
+    use crate::v2::{
+        compressed_path::CompressedPath,
+        raw::{Inner256, Inner48},
+    };
 
     use super::{Header, Inner, InnerSorted, Leaf, NodePtr};
 
@@ -189,6 +192,77 @@ mod tests {
         }
         test::<InnerSorted<usize, usize, 10, 4>, 10>(3);
         test::<InnerSorted<usize, usize, 10, 16>, 10>(15);
+        test::<Inner48<usize, usize, 10>, 10>(47);
+        test::<Inner256<usize, usize, 10>, 10>(255);
+    }
+
+    #[test]
+    fn inner_add_and_del() {
+        fn test<T, const PARTIAL_LEN: usize>(max_key_partial: u8)
+        where
+            T: Inner<PARTIAL_LEN> + From<Header<PARTIAL_LEN>>,
+        {
+            let mut inner = T::from(Header::from(CompressedPath::default()));
+            {
+                let leaves = TestLeaves::new(max_key_partial as usize + 1);
+                for i in 0..=max_key_partial {
+                    inner.add(i, leaves.ptrs[i as usize].into());
+                    assert_eq!(inner.header().children, i as u16 + 1)
+                }
+                for i in 0..=max_key_partial {
+                    assert_eq!(inner.del(i), Some(leaves.ptrs[i as usize].into()));
+                    assert_eq!(inner.header().children, u16::from(max_key_partial - i));
+                }
+            }
+            {
+                let leaves = TestLeaves::new(max_key_partial as usize + 1);
+                for i in 0..=max_key_partial {
+                    inner.add(i, leaves.ptrs[i as usize].into());
+                    assert_eq!(inner.header().children, i as u16 + 1)
+                }
+                for i in 0..=max_key_partial {
+                    assert_eq!(inner.get(i), Some(leaves.ptrs[i as usize].into()))
+                }
+            }
+        }
+        test::<InnerSorted<usize, usize, 10, 4>, 10>(3);
+        test::<InnerSorted<usize, usize, 10, 16>, 10>(15);
+        test::<Inner48<usize, usize, 10>, 10>(47);
+        test::<Inner256<usize, usize, 10>, 10>(255);
+    }
+
+    #[test]
+    fn inner_add_existing() {
+        fn test<T, const PARTIAL_LEN: usize>(max_key_partial: u8)
+        where
+            T: Inner<PARTIAL_LEN> + From<Header<PARTIAL_LEN>>,
+        {
+            let mut inner = T::from(Header::from(CompressedPath::default()));
+            {
+                let leaves = TestLeaves::new(max_key_partial as usize + 1);
+                for i in 0..=max_key_partial {
+                    inner.add(i, leaves.ptrs[i as usize].into());
+                    assert_eq!(inner.header().children, i as u16 + 1)
+                }
+                for i in 0..=max_key_partial {
+                    assert_eq!(inner.get(i), Some(leaves.ptrs[i as usize].into()))
+                }
+            }
+            {
+                let leaves = TestLeaves::new(max_key_partial as usize + 1);
+                for i in 0..=max_key_partial {
+                    inner.add(i, leaves.ptrs[i as usize].into());
+                    assert_eq!(inner.header().children, u16::from(max_key_partial) + 1)
+                }
+                for i in 0..=max_key_partial {
+                    assert_eq!(inner.get(i), Some(leaves.ptrs[i as usize].into()))
+                }
+            }
+        }
+        test::<InnerSorted<usize, usize, 10, 4>, 10>(3);
+        test::<InnerSorted<usize, usize, 10, 16>, 10>(15);
+        test::<Inner48<usize, usize, 10>, 10>(47);
+        test::<Inner256<usize, usize, 10>, 10>(255);
     }
 
     #[test]
@@ -215,6 +289,8 @@ mod tests {
         }
         test::<InnerSorted<usize, usize, 10, 4>, 10>(3);
         test::<InnerSorted<usize, usize, 10, 16>, 10>(15);
+        test::<Inner48<usize, usize, 10>, 10>(47);
+        test::<Inner256<usize, usize, 10>, 10>(255);
     }
 
     #[test]
@@ -233,6 +309,8 @@ mod tests {
         }
         test::<InnerSorted<usize, usize, 10, 4>, 10>(3);
         test::<InnerSorted<usize, usize, 10, 16>, 10>(15);
+        test::<Inner48<usize, usize, 10>, 10>(47);
+        test::<Inner256<usize, usize, 10>, 10>(255);
     }
 
     #[test]
@@ -251,5 +329,7 @@ mod tests {
         }
         test::<InnerSorted<usize, usize, 10, 4>, 10>(3);
         test::<InnerSorted<usize, usize, 10, 16>, 10>(15);
+        test::<Inner48<usize, usize, 10>, 10>(47);
+        test::<Inner256<usize, usize, 10>, 10>(255);
     }
 }
