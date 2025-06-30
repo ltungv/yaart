@@ -6,17 +6,17 @@ pub struct SearchKey<'a> {
     elems: &'a [u8],
 }
 
+impl<'a> PartialEq<[u8]> for SearchKey<'_> {
+    fn eq(&self, elems: &[u8]) -> bool {
+        self.elems == elems
+    }
+}
+
 impl<'a> Index<usize> for SearchKey<'a> {
     type Output = u8;
 
     fn index(&self, index: usize) -> &Self::Output {
         self.elems.get(index).unwrap_or(&0)
-    }
-}
-
-impl AsRef<[u8]> for SearchKey<'_> {
-    fn as_ref(&self) -> &[u8] {
-        self.elems
     }
 }
 
@@ -66,5 +66,48 @@ impl<'a> SearchKey<'a> {
             .zip(other)
             .take_while(|(x, y)| x == y)
             .count()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SearchKey;
+
+    #[test]
+    fn basic_properties() {
+        let k = SearchKey::new(b"");
+        assert!(k.is_empty());
+        assert_eq!(k.len(), 0);
+        assert_eq!(&k, b"".as_slice());
+
+        let k = SearchKey::new(b"abc");
+        assert!(!k.is_empty());
+        assert_eq!(k.len(), 3);
+        assert_eq!(&k, b"abc".as_slice());
+    }
+
+    #[test]
+    fn shift() {
+        let k1 = SearchKey::new(b"abcdef");
+        let k2 = k1.shift(3);
+        assert!(!k2.is_empty());
+        assert_eq!(k2.len(), 3);
+        assert_eq!(&k2, b"def".as_slice());
+    }
+
+    #[test]
+    fn range() {
+        let k1 = SearchKey::new(b"abcdef");
+        let k2 = k1.range(1, 4);
+        assert!(!k2.is_empty());
+        assert_eq!(k2.len(), 4);
+        assert_eq!(&k2, b"bcde".as_slice());
+    }
+
+    #[test]
+    fn common_prefix_len() {
+        let k1 = SearchKey::new(b"abcdef");
+        let k2 = SearchKey::new(b"abcabc");
+        assert_eq!(k1.common_prefix_len(k2), 3);
     }
 }
