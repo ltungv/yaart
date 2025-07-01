@@ -1,4 +1,4 @@
-use std::ops::Index;
+use std::ops::{Deref, Index};
 
 /// A slice of bytes used during tree searches and traversals.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -6,9 +6,18 @@ pub struct SearchKey<'a> {
     elems: &'a [u8],
 }
 
-impl<'a> PartialEq<[u8]> for SearchKey<'_> {
-    fn eq(&self, elems: &[u8]) -> bool {
-        self.elems == elems
+impl<'a> From<&'a [u8]> for SearchKey<'a> {
+    fn from(elems: &'a [u8]) -> Self {
+        Self::new(elems)
+    }
+}
+
+
+impl<'a> Deref for SearchKey<'_> {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.elems
     }
 }
 
@@ -34,16 +43,6 @@ impl<'a> SearchKey<'a> {
     /// Returns a new [`SearchKey`] over the given slice of bytes.
     pub const fn new(elems: &'a [u8]) -> Self {
         Self { elems }
-    }
-
-    /// Returns the length of the slice of bytes.
-    pub fn len(self) -> usize {
-        self.elems.len()
-    }
-
-    /// Returns whether the slice of bytes is empty.
-    pub fn is_empty(self) -> bool {
-        self.elems.is_empty()
     }
 
     /// Returns a new search key whose slice starts from the given index.
@@ -78,12 +77,12 @@ mod tests {
         let k = SearchKey::new(b"");
         assert!(k.is_empty());
         assert_eq!(k.len(), 0);
-        assert_eq!(&k, b"".as_slice());
+        assert_eq!(&*k, b"".as_slice());
 
         let k = SearchKey::new(b"abc");
         assert!(!k.is_empty());
         assert_eq!(k.len(), 3);
-        assert_eq!(&k, b"abc".as_slice());
+        assert_eq!(&*k, b"abc".as_slice());
     }
 
     #[test]
@@ -92,7 +91,7 @@ mod tests {
         let k2 = k1.shift(3);
         assert!(!k2.is_empty());
         assert_eq!(k2.len(), 3);
-        assert_eq!(&k2, b"def".as_slice());
+        assert_eq!(&*k2, b"def".as_slice());
     }
 
     #[test]
@@ -101,7 +100,7 @@ mod tests {
         let k2 = k1.range(1, 4);
         assert!(!k2.is_empty());
         assert_eq!(k2.len(), 4);
-        assert_eq!(&k2, b"bcde".as_slice());
+        assert_eq!(&*k2, b"bcde".as_slice());
     }
 
     #[test]

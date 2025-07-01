@@ -9,6 +9,7 @@
     missing_docs
 )]
 #![warn(rustdoc::all, clippy::pedantic, clippy::nursery)]
+#![allow(edition_2024_expr_fragment_specifier)]
 
 mod art;
 mod bytes_comparable;
@@ -21,3 +22,4 @@ mod v2;
 pub use art::*;
 pub use bytes_comparable::*;
 pub use search_key::*;
+pub use v2::*;

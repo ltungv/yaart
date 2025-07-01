@@ -1,3 +1,4 @@
+use ops::Insertion;
 use raw::Leaf;
 use raw::OpaqueNodePtr;
 
@@ -10,35 +11,55 @@ mod tagged_ptr;
 
 use raw::NodePtr;
 
+pub use key::*;
+
 /// A trait that seals other traits to disallow them from being implemented by external
 /// modules/crates.
 trait Sealed {}
 
-struct RadixTreeMap<K, V, const PARTIAL_LEN: usize = 8> {
+/// An ordered map backed by an adaptive radix tree.
+#[derive(Debug)]
+pub struct RadixTreeMap<K, V, const PARTIAL_LEN: usize = 8> {
     state: Option<NonEmptyRadixTree<K, V, PARTIAL_LEN>>,
 }
 
 impl<K, V, const PARTIAL_LEN: usize> RadixTreeMap<K, V, PARTIAL_LEN> {
-    fn new() -> Self {
+    /// Creates a new empty tree.
+    pub fn new() -> Self {
         Self { state: None }
     }
 
-    fn insert(&mut self, key: K, value: V) -> Option<V> {
-        if let Some(_) = self.state {
-            None
+    /// Inserts a key-value pair into the map.
+    pub fn insert(&mut self, key: K, value: V) -> Option<V>
+    where
+        K: BytesRepr,
+    {
+        if let Some(state) = &mut self.state {
+            let inserted = unsafe { Insertion::prepare(state.root, key.repr()).apply(key, value) };
+            state.root = inserted.root;
+            inserted.prev.map(|l| l.value)
         } else {
-            let leaf = NodePtr::alloc(Leaf::new(key, value));
-            let state = NonEmptyRadixTree { root: leaf.into() };
-            self.state = Some(state);
+            self.state = Some(NonEmptyRadixTree {
+                root: NodePtr::alloc(Leaf::new(key, value)).as_opaque(),
+            });
             None
         }
     }
 }
 
+#[derive(Debug)]
 struct NonEmptyRadixTree<K, V, const PARTIAL_LEN: usize> {
     root: OpaqueNodePtr<K, V, PARTIAL_LEN>,
 }
 
-pub struct InsertPoint {}
+#[cfg(test)]
+mod tests {
+    use super::RadixTreeMap;
 
-pub struct DeletePoint {}
+    #[test]
+    fn test() {
+        let mut m = RadixTreeMap::<Vec<u8>, usize>::new();
+        m.insert(b"and".to_vec(), 0);
+        m.insert(b"ant".to_vec(), 0);
+    }
+}

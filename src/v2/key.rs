@@ -6,9 +6,12 @@ pub use identity::*;
 pub use mapped::*;
 pub use to_big_endian::*;
 
+use super::search_key::SearchKey;
+
 /// Any type implementing this trait can be decomposed into bytes.
 pub trait BytesRepr {
-    fn repr(&self) -> &[u8];
+    /// Views the bytes representation of this value through a [`SearchKey`].
+    fn repr(&self) -> SearchKey<'_>;
 }
 
 /// Any type implementing this trait can be decomposed into bytes and the order between decomposed
@@ -18,36 +21,39 @@ pub trait OrderedBytesRepr: BytesRepr + Ord {}
 /// Any type implementing this trait can be converted from/into some type implementing
 /// [`BytesRepr`].
 pub trait BytesMapping<T> {
+    /// The type of the byte container that a value will be converted into.
     type Key: BytesRepr;
 
+    /// Converts a value into its bytes representation.
     fn to_bytes(value: T) -> Self::Key;
 
+    /// Converts a bytes representation into its value.
     fn from_bytes(bytes: Self::Key) -> T;
 }
 
 macro_rules! impl_bytes_repr_for_integer {
     ($T:ty) => {
         impl BytesRepr for $T {
-            fn repr(&self) -> &[u8] {
-                bytemuck::bytes_of(self)
+            fn repr(&self) -> SearchKey<'_> {
+                bytemuck::bytes_of(self).into()
             }
         }
 
         impl BytesRepr for [$T] {
-            fn repr(&self) -> &[u8] {
-                bytemuck::cast_slice(self)
+            fn repr(&self) -> SearchKey<'_> {
+                bytemuck::cast_slice(self).into()
             }
         }
 
         impl BytesRepr for Vec<$T> {
-            fn repr(&self) -> &[u8] {
-                bytemuck::cast_slice(self)
+            fn repr(&self) -> SearchKey<'_> {
+                bytemuck::cast_slice(self).into()
             }
         }
 
         impl<const N: usize> BytesRepr for [$T; N] {
-            fn repr(&self) -> &[u8] {
-                bytemuck::cast_slice(self)
+            fn repr(&self) -> SearchKey<'_> {
+                bytemuck::cast_slice(self).into()
             }
         }
     };

@@ -1,5 +1,7 @@
 use std::ops::Index;
 
+use super::search_key::SearchKey;
+
 /// A compressed path holds the length of the common prefix and a partial preifx consists of the
 /// first `PARTIAL_LEN` bytes of the common prefix.
 ///
@@ -62,12 +64,23 @@ impl<const PARTIAL_LEN: usize> CompressedPath<PARTIAL_LEN> {
             prefix_len,
             partial: [0; PARTIAL_LEN],
         };
-        let partial_len = prefix_len.max(PARTIAL_LEN);
+        let partial_len = prefix_len.min(PARTIAL_LEN);
         path.partial[..partial_len].copy_from_slice(&key[..partial_len]);
         path
     }
 
     pub fn prefix_len(&self) -> usize {
         self.prefix_len
+    }
+
+    pub fn shift(&mut self, shift: usize) {
+        self.prefix_len -= shift;
+        self.partial.copy_within(shift.., 0);
+    }
+
+    pub fn shift_with(&mut self, shift: usize, key: SearchKey<'_>) {
+        self.prefix_len -= shift;
+        let partial_len = self.prefix_len.min(PARTIAL_LEN);
+        self.partial[..partial_len].copy_from_slice(&key.range(0, partial_len));
     }
 }

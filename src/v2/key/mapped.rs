@@ -4,6 +4,8 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
+use crate::v2::search_key::SearchKey;
+
 use super::{BytesMapping, BytesRepr};
 
 /// A container for the decomposed bytes resulted from mapping a value of type `T` using the
@@ -96,7 +98,7 @@ impl<M, T> BytesRepr for Mapped<M, T>
 where
     M: BytesMapping<T>,
 {
-    fn repr(&self) -> &[u8] {
+    fn repr(&self) -> SearchKey<'_> {
         self.key.repr()
     }
 }

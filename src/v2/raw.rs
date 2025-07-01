@@ -20,6 +20,22 @@ use super::{
     search_key::SearchKey,
 };
 
+/// An enum of all node types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum NodeType {
+    /// A leaf node.
+    Leaf = 0,
+    /// An inner node that can hold a maximum of 4 children.
+    Inner4 = 1,
+    /// An inner node that can hold a maximum of 16 children.
+    Inner16 = 2,
+    /// An inner node that can hold a maximum of 48 children.
+    Inner48 = 3,
+    /// An inner node that can hold a maximum of 256 children.
+    Inner256 = 4,
+}
+
 /// Every type of node in a tree implements this trait.
 pub trait Node<const PARTIAL_LEN: usize>: Sealed {
     /// The runtime type of the node.
@@ -51,24 +67,34 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
     /// Adds a child pointer with a key partial to this node.
     fn add(
         &mut self,
-        key_partial: u8,
+        partial_key: u8,
         child_ptr: OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>,
     );
 
     /// Deletes a child pointer at the key partial from this node.
     fn del(
         &mut self,
-        key_partial: u8,
+        partial_key: u8,
     ) -> Option<OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>>;
 
     /// Gets a child pointer that corresponds to the given key partial.
-    fn get(&self, key_partial: u8) -> Option<OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>>;
+    fn get(&self, partial_key: u8) -> Option<OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>>;
 
     /// Returns the minimum child pointer of this node and it's key
     fn min(&self) -> (u8, OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>);
 
     /// Returns the maximum child pointer of this inner and it's key
     fn max(&self) -> (u8, OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>);
+
+    fn is_full(&self) -> bool {
+        match Self::TYPE {
+            NodeType::Leaf => unreachable!("invalid inner node type"),
+            NodeType::Inner4 => self.header().children >= 4,
+            NodeType::Inner16 => self.header().children >= 16,
+            NodeType::Inner48 => self.header().children >= 48,
+            NodeType::Inner256 => self.header().children >= 256,
+        }
+    }
 
     /// Reads the full prefix of this node, and searches a descendant leaf node to find implicit
     /// bytes if necessary.
@@ -87,8 +113,10 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
             // Find the minimum leaf which is guaranteed to have the full prefix of this node.
             let leaf_ptr = unsafe { Search::minimum(self.min().1) };
             let leaf = unsafe { leaf_ptr.as_ref() };
-            let key = SearchKey::new(leaf.key.repr());
-            let prefix = key.range(current_depth, header.path.prefix_len());
+            let prefix = leaf
+                .key
+                .repr()
+                .range(current_depth, header.path.prefix_len());
             (prefix, Some(leaf_ptr))
         }
     }
@@ -109,14 +137,15 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
         // Reads the full prefix of this node.
         let (prefix, leaf) = self.read_full_prefix(current_depth);
         let prefix_len = prefix.common_prefix_len(key.shift(current_depth));
+        let mismatched = prefix[prefix_len];
 
         assert!(prefix_len <= prefix.len());
 
         if prefix_len < prefix.len() {
             // The common prefix with the seach key is shorter than the actual prefix.
             Err(FullPrefixMismatch {
-                mismatch: prefix[prefix_len],
                 prefix_len,
+                mismatched,
                 leaf,
             })
         } else {
@@ -125,211 +154,388 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
     }
 }
 
-/// An enum of all node types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum NodeType {
-    /// The type of a leaf node.
-    Leaf = 0,
-    /// The type of an inner node that can hold a maximum of 4 children.
-    Inner4 = 1,
-    /// The type of an inner node that can hold a maximum of 16 children.
-    Inner16 = 2,
-    /// The type of an inner node that can hold a maximum of 48 children.
-    Inner48 = 3,
-    /// The type of an inner node that can hold a maximum of 256 children.
-    Inner256 = 4,
-}
-
 #[cfg(test)]
 mod tests {
     use crate::v2::{
         compressed_path::CompressedPath,
-        raw::{Inner256, Inner48},
+        raw::{Inner256, Inner48, NodePtrGuard},
+        search_key::SearchKey,
     };
 
-    use super::{Header, Inner, InnerSorted, Leaf, NodePtr};
+    use super::{Header, Inner, InnerSorted, Leaf};
 
-    struct TestLeaves {
-        ptrs: Box<[NodePtr<Leaf<usize, usize>>]>,
+    #[should_panic = "grow is impossible"]
+    #[test]
+    fn grow_inner256() {
+        let inner = Inner256::<u64, u64, 8>::from(Header::from(CompressedPath::default()));
+        inner.grow();
     }
 
-    impl Drop for TestLeaves {
-        fn drop(&mut self) {
-            for &ptr in &self.ptrs {
-                unsafe {
-                    NodePtr::dealloc(ptr);
+    #[should_panic = "shrink is impossible"]
+    #[test]
+    fn shrink_inner4() {
+        let inner = InnerSorted::<u64, u64, 8, 4>::from(Header::from(CompressedPath::default()));
+        inner.shrink();
+    }
+
+    macro_rules! test_inner_grow {
+        ($name:ident,$T:ty,$max_partial_key:expr,$grown_max_partial_key:expr) => {
+            #[test]
+            fn $name() {
+                let max_partial_key = $max_partial_key as u8;
+                let grown_max_partial_key = $grown_max_partial_key as u8;
+                let mut leaves = NodePtrGuard::new();
+                for i in 0..=grown_max_partial_key {
+                    leaves.manage(Leaf::new(i as usize, i as usize));
+                }
+
+                let mut inner = <$T>::from(Header::from(CompressedPath::default()));
+                for i in 0..=max_partial_key {
+                    inner.add(i, leaves[i as usize].into());
+                }
+
+                assert!(inner.is_full());
+                let mut grown = inner.grow();
+
+                assert!(!grown.is_full());
+                for i in max_partial_key + 1..=grown_max_partial_key {
+                    grown.add(i, leaves[i as usize].into());
+                    assert_eq!(grown.header().children, i as u16 + 1)
+                }
+
+                assert!(grown.is_full());
+                for i in 0..=grown_max_partial_key {
+                    assert_eq!(grown.get(i), Some(leaves[i as usize].into()))
                 }
             }
-        }
+        };
     }
 
-    impl TestLeaves {
-        fn new(count: usize) -> Self {
-            Self {
-                ptrs: (0..count)
-                    .map(|i| NodePtr::alloc(Leaf::new(i, i)))
-                    .collect(),
+    macro_rules! test_inner_shrink {
+        ($name:ident,$T:ty,$max_partial_key:expr) => {
+            #[test]
+            fn $name() {
+                let max_partial_key = $max_partial_key as u8;
+                let mut leaves = NodePtrGuard::new();
+                for i in 0..=max_partial_key {
+                    leaves.manage(Leaf::new(i as usize, i as usize));
+                }
+
+                let mut inner = <$T>::from(Header::from(CompressedPath::default()));
+                for i in 0..=max_partial_key {
+                    inner.add(i, leaves[i as usize].into());
+                }
+
+                assert!(!inner.is_full());
+                let shrunk = inner.shrink();
+
+                assert!(shrunk.is_full());
+                for i in 0..=max_partial_key {
+                    assert_eq!(shrunk.get(i), Some(leaves[i as usize].into()))
+                }
             }
-        }
+        };
     }
 
-    #[test]
-    fn inner_add_and_get() {
-        fn test<T, const PARTIAL_LEN: usize>(max_key_partial: u8)
-        where
-            T: Inner<PARTIAL_LEN> + From<Header<PARTIAL_LEN>>,
-        {
-            let leaves = TestLeaves::new(max_key_partial as usize + 1);
-            let mut inner = T::from(Header::from(CompressedPath::default()));
-            for i in 0..=max_key_partial {
-                inner.add(i, leaves.ptrs[i as usize].into());
-                assert_eq!(inner.header().children, i as u16 + 1)
-            }
-            for i in 0..=max_key_partial {
-                assert_eq!(inner.get(i), Some(leaves.ptrs[i as usize].into()))
-            }
-        }
-        test::<InnerSorted<usize, usize, 10, 4>, 10>(3);
-        test::<InnerSorted<usize, usize, 10, 16>, 10>(15);
-        test::<Inner48<usize, usize, 10>, 10>(47);
-        test::<Inner256<usize, usize, 10>, 10>(255);
-    }
-
-    #[test]
-    fn inner_add_and_del() {
-        fn test<T, const PARTIAL_LEN: usize>(max_key_partial: u8)
-        where
-            T: Inner<PARTIAL_LEN> + From<Header<PARTIAL_LEN>>,
-        {
-            let mut inner = T::from(Header::from(CompressedPath::default()));
-            {
-                let leaves = TestLeaves::new(max_key_partial as usize + 1);
-                for i in 0..=max_key_partial {
-                    inner.add(i, leaves.ptrs[i as usize].into());
+    macro_rules! test_inner_add_and_get {
+        ($name:ident,$T:ty,$max_partial_key:expr) => {
+            #[test]
+            fn $name() {
+                let max_partial_key = $max_partial_key as u8;
+                let mut leaves = NodePtrGuard::new();
+                for i in 0..=max_partial_key {
+                    leaves.manage(Leaf::new(i as usize, i as usize));
+                }
+                let mut inner = <$T>::from(Header::from(CompressedPath::default()));
+                for i in 0..=max_partial_key {
+                    inner.add(i, leaves[i as usize].into());
                     assert_eq!(inner.header().children, i as u16 + 1)
                 }
-                for i in 0..=max_key_partial {
-                    assert_eq!(inner.del(i), Some(leaves.ptrs[i as usize].into()));
-                    assert_eq!(inner.header().children, u16::from(max_key_partial - i));
+                for i in 0..=max_partial_key {
+                    assert_eq!(inner.get(i), Some(leaves[i as usize].into()))
                 }
             }
-            {
-                let leaves = TestLeaves::new(max_key_partial as usize + 1);
-                for i in 0..=max_key_partial {
-                    inner.add(i, leaves.ptrs[i as usize].into());
-                    assert_eq!(inner.header().children, i as u16 + 1)
-                }
-                for i in 0..=max_key_partial {
-                    assert_eq!(inner.get(i), Some(leaves.ptrs[i as usize].into()))
-                }
-            }
-        }
-        test::<InnerSorted<usize, usize, 10, 4>, 10>(3);
-        test::<InnerSorted<usize, usize, 10, 16>, 10>(15);
-        test::<Inner48<usize, usize, 10>, 10>(47);
-        test::<Inner256<usize, usize, 10>, 10>(255);
+        };
     }
 
-    #[test]
-    fn inner_add_existing() {
-        fn test<T, const PARTIAL_LEN: usize>(max_key_partial: u8)
-        where
-            T: Inner<PARTIAL_LEN> + From<Header<PARTIAL_LEN>>,
-        {
-            let mut inner = T::from(Header::from(CompressedPath::default()));
-            {
-                let leaves = TestLeaves::new(max_key_partial as usize + 1);
-                for i in 0..=max_key_partial {
-                    inner.add(i, leaves.ptrs[i as usize].into());
-                    assert_eq!(inner.header().children, i as u16 + 1)
+    macro_rules! test_inner_add_and_del {
+        ($name:ident,$T:ty,$max_partial_key:expr) => {
+            #[test]
+            fn $name() {
+                let max_partial_key = $max_partial_key as u8;
+                let mut inner = <$T>::from(Header::from(CompressedPath::default()));
+                {
+                    let mut leaves = NodePtrGuard::new();
+                    for i in 0..=max_partial_key {
+                        leaves.manage(Leaf::new(i as usize, i as usize));
+                    }
+                    for i in 0..=max_partial_key {
+                        inner.add(i, leaves[i as usize].into());
+                        assert_eq!(inner.header().children, i as u16 + 1)
+                    }
+                    for i in 0..=max_partial_key {
+                        assert_eq!(inner.del(i), Some(leaves[i as usize].into()));
+                        assert_eq!(inner.header().children, u16::from(max_partial_key - i));
+                    }
                 }
-                for i in 0..=max_key_partial {
-                    assert_eq!(inner.get(i), Some(leaves.ptrs[i as usize].into()))
+                {
+                    let mut leaves = NodePtrGuard::new();
+                    for i in 0..=max_partial_key {
+                        leaves.manage(Leaf::new(i as usize, i as usize));
+                    }
+                    for i in 0..=max_partial_key {
+                        inner.add(i, leaves[i as usize].into());
+                        assert_eq!(inner.header().children, i as u16 + 1)
+                    }
+                    for i in 0..=max_partial_key {
+                        assert_eq!(inner.get(i), Some(leaves[i as usize].into()))
+                    }
                 }
             }
-            {
-                let leaves = TestLeaves::new(max_key_partial as usize + 1);
-                for i in 0..=max_key_partial {
-                    inner.add(i, leaves.ptrs[i as usize].into());
-                    assert_eq!(inner.header().children, u16::from(max_key_partial) + 1)
-                }
-                for i in 0..=max_key_partial {
-                    assert_eq!(inner.get(i), Some(leaves.ptrs[i as usize].into()))
-                }
-            }
-        }
-        test::<InnerSorted<usize, usize, 10, 4>, 10>(3);
-        test::<InnerSorted<usize, usize, 10, 16>, 10>(15);
-        test::<Inner48<usize, usize, 10>, 10>(47);
-        test::<Inner256<usize, usize, 10>, 10>(255);
+        };
     }
 
-    #[test]
-    fn inner_del_and_get() {
-        fn test<T, const PARTIAL_LEN: usize>(max_key_partial: u8)
-        where
-            T: Inner<PARTIAL_LEN> + From<Header<PARTIAL_LEN>>,
-        {
-            let leaves = TestLeaves::new(max_key_partial as usize + 1);
-            let mut inner = T::from(Header::from(CompressedPath::default()));
-            for i in 0..=max_key_partial {
-                assert!(inner.del(i).is_none());
+    macro_rules! test_inner_add_existing {
+        ($name:ident,$T:ty,$max_partial_key:expr) => {
+            #[test]
+            fn $name() {
+                let max_partial_key = $max_partial_key as u8;
+                let mut inner = <$T>::from(Header::from(CompressedPath::default()));
+                {
+                    let mut leaves = NodePtrGuard::new();
+                    for i in 0..=max_partial_key {
+                        leaves.manage(Leaf::new(i as usize, i as usize));
+                    }
+                    for i in 0u8..=max_partial_key {
+                        inner.add(i, leaves[i as usize].into());
+                        assert_eq!(inner.header().children, i as u16 + 1)
+                    }
+                    for i in 0u8..=max_partial_key {
+                        assert_eq!(inner.get(i), Some(leaves[i as usize].into()))
+                    }
+                }
+                {
+                    let mut leaves = NodePtrGuard::new();
+                    for i in 0..=max_partial_key {
+                        leaves.manage(Leaf::new(i as usize, i as usize));
+                    }
+                    for i in 0u8..=max_partial_key {
+                        inner.add(i, leaves[i as usize].into());
+                        assert_eq!(inner.header().children, u16::from(max_partial_key) + 1)
+                    }
+                    for i in 0u8..=max_partial_key {
+                        assert_eq!(inner.get(i), Some(leaves[i as usize].into()))
+                    }
+                }
             }
-            for i in 0..=max_key_partial {
-                inner.add(i, leaves.ptrs[i as usize].into());
-            }
-            for i in 0..=max_key_partial {
-                let child = inner.del(i);
-                assert_eq!(child, Some(leaves.ptrs[i as usize].into()));
-                let child = inner.get(i);
-                assert!(child.is_none());
-            }
-            assert_eq!(inner.header().children, 0);
-        }
-        test::<InnerSorted<usize, usize, 10, 4>, 10>(3);
-        test::<InnerSorted<usize, usize, 10, 16>, 10>(15);
-        test::<Inner48<usize, usize, 10>, 10>(47);
-        test::<Inner256<usize, usize, 10>, 10>(255);
+        };
     }
 
-    #[test]
-    fn inner_min() {
-        fn test<T, const PARTIAL_LEN: usize>(max_key_partial: u8)
-        where
-            T: Inner<PARTIAL_LEN> + From<Header<PARTIAL_LEN>>,
-        {
-            let leaves = TestLeaves::new(max_key_partial as usize + 1);
-            let mut inner = T::from(Header::from(CompressedPath::default()));
-            for i in (0..=max_key_partial).rev() {
-                inner.add(i, leaves.ptrs[i as usize].into());
-                let min_child = inner.min();
-                assert_eq!(min_child, (i, leaves.ptrs[i as usize].into()));
+    macro_rules! test_inner_del_and_get {
+        ($name:ident,$T:ty,$max_partial_key:expr) => {
+            #[test]
+            fn $name() {
+                let max_partial_key = $max_partial_key as u8;
+                let mut leaves = NodePtrGuard::new();
+                for i in 0..=max_partial_key {
+                    leaves.manage(Leaf::new(i as usize, i as usize));
+                }
+                let mut inner = <$T>::from(Header::from(CompressedPath::default()));
+                for i in 0..=max_partial_key {
+                    assert!(inner.del(i).is_none());
+                }
+                for i in 0..=max_partial_key {
+                    inner.add(i, leaves[i as usize].into());
+                }
+                for i in 0..=max_partial_key {
+                    let child = inner.del(i);
+                    assert_eq!(child, Some(leaves[i as usize].into()));
+                    let child = inner.get(i);
+                    assert!(child.is_none());
+                }
+                assert_eq!(inner.header().children, 0);
             }
-        }
-        test::<InnerSorted<usize, usize, 10, 4>, 10>(3);
-        test::<InnerSorted<usize, usize, 10, 16>, 10>(15);
-        test::<Inner48<usize, usize, 10>, 10>(47);
-        test::<Inner256<usize, usize, 10>, 10>(255);
+        };
     }
 
-    #[test]
-    fn inner_max() {
-        fn test<T, const PARTIAL_LEN: usize>(max_key_partial: u8)
-        where
-            T: Inner<PARTIAL_LEN> + From<Header<PARTIAL_LEN>>,
-        {
-            let leaves = TestLeaves::new(max_key_partial as usize + 1);
-            let mut inner = T::from(Header::from(CompressedPath::default()));
-            for i in 0..=max_key_partial {
-                inner.add(i, leaves.ptrs[i as usize].into());
-                let min_child = inner.max();
-                assert_eq!(min_child, (i, leaves.ptrs[i as usize].into()));
+    macro_rules! test_inner_min {
+        ($name:ident,$T:ty,$max_partial_key:expr) => {
+            #[test]
+            fn $name() {
+                let max_partial_key = $max_partial_key as u8;
+                let mut leaves = NodePtrGuard::new();
+                for i in 0..=max_partial_key {
+                    leaves.manage(Leaf::new(i as usize, i as usize));
+                }
+                let mut inner = <$T>::from(Header::from(CompressedPath::default()));
+                for i in (0..=max_partial_key).rev() {
+                    inner.add(i, leaves[i as usize].into());
+                    let min_child = inner.min();
+                    assert_eq!(min_child, (i, leaves[i as usize].into()));
+                }
             }
-        }
-        test::<InnerSorted<usize, usize, 10, 4>, 10>(3);
-        test::<InnerSorted<usize, usize, 10, 16>, 10>(15);
-        test::<Inner48<usize, usize, 10>, 10>(47);
-        test::<Inner256<usize, usize, 10>, 10>(255);
+        };
     }
+
+    macro_rules! test_inner_max {
+        ($name:ident,$T:ty,$max_partial_key:expr) => {
+            #[test]
+            fn $name() {
+                let max_partial_key = $max_partial_key as u8;
+                let mut leaves = NodePtrGuard::new();
+                for i in 0..=max_partial_key {
+                    leaves.manage(Leaf::new(i as usize, i as usize));
+                }
+                let mut inner = <$T>::from(Header::from(CompressedPath::default()));
+                for i in (0..=max_partial_key) {
+                    inner.add(i, leaves[i as usize].into());
+                    let max_child = inner.max();
+                    assert_eq!(max_child, (i, leaves[i as usize].into()));
+                }
+            }
+        };
+    }
+
+    macro_rules! test_inner_empty_min {
+        ($name:ident,$T:ty) => {
+            #[should_panic = "node is empty"]
+            #[test]
+            fn $name() {
+                let inner = <$T>::from(Header::from(CompressedPath::default()));
+                inner.min();
+            }
+        };
+    }
+
+    macro_rules! test_inner_empty_max {
+        ($name:ident,$T:ty) => {
+            #[should_panic = "node is empty"]
+            #[test]
+            fn $name() {
+                let inner = <$T>::from(Header::from(CompressedPath::default()));
+                inner.max();
+            }
+        };
+    }
+
+    macro_rules! test_read_full_prefix {
+        ($name:ident,$T:ty) => {
+            #[test]
+            fn $name() {
+                {
+                    let inner = <$T>::from(Header::<3>::from(CompressedPath::new(b"abc", 3)));
+                    let (key, leaf) = inner.read_full_prefix(0);
+                    assert!(leaf.is_none());
+                    assert_eq!(&*key, b"abc".as_slice());
+                }
+                {
+                    let mut leaves = NodePtrGuard::<_, _, 3>::new();
+                    let min_leaf = leaves.manage(Leaf::new(b"abcdef".to_vec(), 0));
+
+                    let mut inner = <$T>::from(Header::<3>::from(CompressedPath::new(b"abc", 5)));
+                    inner.add(b'f', min_leaf.into());
+
+                    let (key, leaf) = inner.read_full_prefix(0);
+                    assert_eq!(leaf.unwrap(), min_leaf);
+                    assert_eq!(&*key, b"abcde".as_slice());
+                }
+            }
+        };
+    }
+    macro_rules! test_match_full_prefix {
+        ($name:ident,$T:ty) => {
+            #[test]
+            fn $name() {
+                {
+                    let inner = <$T>::from(Header::<3>::from(CompressedPath::new(b"abc", 3)));
+
+                    let result = inner.match_full_prefix(SearchKey::new(b"abcdef"), 0);
+                    assert_eq!(result.unwrap(), 3);
+
+                    let result = inner.match_full_prefix(SearchKey::new(b"ab"), 0);
+                    let error = result.unwrap_err();
+                    assert_eq!(error.prefix_len, 2);
+                    assert_eq!(error.leaf, None);
+                }
+                {
+                    let mut leaves = NodePtrGuard::<_, _, 3>::new();
+                    let leaf = leaves.manage(Leaf::new(b"abcdef".to_vec(), 0));
+
+                    let mut inner = <$T>::from(Header::<3>::from(CompressedPath::new(b"abc", 5)));
+                    inner.add(b'f', leaf.as_opaque());
+
+                    let result = inner.match_full_prefix(SearchKey::new(b"abcde"), 0);
+                    assert_eq!(result.unwrap(), 5);
+
+                    let result = inner.match_full_prefix(SearchKey::new(b"ab"), 0);
+                    let error = result.unwrap_err();
+                    assert_eq!(error.prefix_len, 2);
+                    assert_eq!(error.leaf.unwrap(), leaf);
+
+                    let result = inner.match_full_prefix(SearchKey::new(b"abcd"), 0);
+                    let error = result.unwrap_err();
+                    assert_eq!(error.prefix_len, 4);
+                    assert_eq!(error.leaf.unwrap(), leaf);
+                }
+            }
+        };
+    }
+
+    test_inner_grow!(inner4_grow, InnerSorted<usize, usize, 10, 4>, 3, 15);
+    test_inner_grow!(inner16_grow, InnerSorted<usize, usize, 10, 16>, 15, 47);
+    test_inner_grow!(inner48_grow, Inner48<usize, usize, 10>, 47, 255);
+
+    test_inner_shrink!(inner16_shrink, InnerSorted<usize, usize, 10, 16>, 3);
+    test_inner_shrink!(inner48_shrink, Inner48<usize, usize, 10>, 15);
+    test_inner_shrink!(inner256_shrink, Inner256<usize, usize, 10 >, 47);
+
+    test_inner_add_and_get!(inner4_add_and_get, InnerSorted<usize, usize, 10, 4>, 3);
+    test_inner_add_and_get!(inner16_add_and_get, InnerSorted<usize, usize, 10, 16>, 15);
+    test_inner_add_and_get!(inner48_add_and_get, Inner48<usize, usize, 10>, 47);
+    test_inner_add_and_get!(inner256_add_and_get, Inner256<usize, usize, 10>, 255);
+
+    test_inner_add_and_del!(inner4_add_and_del, InnerSorted<usize, usize, 10, 4>, 3);
+    test_inner_add_and_del!(inner16_add_and_del, InnerSorted<usize, usize, 10, 16>, 15);
+    test_inner_add_and_del!(inner48_add_and_del, Inner48<usize, usize, 10>, 47);
+    test_inner_add_and_del!(inner256_add_and_del, Inner256<usize, usize, 10>, 255);
+
+    test_inner_add_existing!(inner4_add_existing, InnerSorted<usize, usize, 10, 4>, 3);
+    test_inner_add_existing!(inner16_add_existing, InnerSorted<usize, usize, 10, 16>, 15);
+    test_inner_add_existing!(inner48_add_existing, Inner48<usize, usize, 10>, 47);
+    test_inner_add_existing!(inner256_add_existing, Inner256<usize, usize, 10>, 255);
+
+    test_inner_del_and_get!(inner4_del_and_get, InnerSorted<usize, usize, 10, 4>, 3);
+    test_inner_del_and_get!(inner16_del_and_get, InnerSorted<usize, usize, 10, 16>, 15);
+    test_inner_del_and_get!(inner48_del_and_get, Inner48<usize, usize, 10>, 47);
+    test_inner_del_and_get!(inner256_del_and_get, Inner256<usize, usize, 10>, 255);
+
+    test_inner_min!(inner4_min, InnerSorted<usize, usize, 10, 4>, 3);
+    test_inner_min!(inner16_min, InnerSorted<usize, usize, 10, 16>, 15);
+    test_inner_min!(inner48_min, Inner48<usize, usize, 10>, 47);
+    test_inner_min!(inner256_min, Inner256<usize, usize, 10>, 255);
+
+    test_inner_max!(inner4_max, InnerSorted<usize, usize, 10, 4>, 3);
+    test_inner_max!(inner16_max, InnerSorted<usize, usize, 10, 16>, 15);
+    test_inner_max!(inner48_max, Inner48<usize, usize, 10>, 47);
+    test_inner_max!(inner256_max, Inner256<usize, usize, 10>, 255);
+
+    test_inner_empty_min!(inner4_empty_min, InnerSorted<usize, usize, 10, 4>);
+    test_inner_empty_min!(inner16_empty_min, InnerSorted<usize, usize, 10, 16>);
+    test_inner_empty_min!(inner48_empty_min, Inner48<usize, usize, 10>);
+    test_inner_empty_min!(inner256_empty_min, Inner256<usize, usize, 10>);
+
+    test_inner_empty_max!(inner4_empty_max, InnerSorted<usize, usize, 10, 4>);
+    test_inner_empty_max!(inner16_empty_max, InnerSorted<usize, usize, 10, 16>);
+    test_inner_empty_max!(inner48_empty_max, Inner48<usize, usize, 10>);
+    test_inner_empty_max!(inner256_empty_max, Inner256<usize, usize, 10>);
+
+    test_read_full_prefix!(inner4_read_full_prefix, InnerSorted<Vec<u8>, u64, 3, 4>);
+    test_read_full_prefix!(inner16_read_full_prefix, InnerSorted<Vec<u8>, u64, 3, 16>);
+    test_read_full_prefix!(inner48_read_full_prefix, Inner48<Vec<u8>, u64, 3>);
+    test_read_full_prefix!(inner256_read_full_prefix, Inner256<Vec<u8>, u64, 3>);
+
+    test_match_full_prefix!(inner4_match_full_prefix, InnerSorted<Vec<u8>, u64, 3, 4>);
+    test_match_full_prefix!(inner16_match_full_prefix, InnerSorted<Vec<u8>, u64, 3, 16>);
+    test_match_full_prefix!(inner48_match_full_prefix, Inner48<Vec<u8>, u64, 3>);
+    test_match_full_prefix!(inner256_match_full_prefix, Inner256<Vec<u8>, u64, 3>);
 }

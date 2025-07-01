@@ -36,11 +36,24 @@ impl<K, V, const PARTIAL_LEN: usize> From<ConcreteNodePtr<K, V, PARTIAL_LEN>>
 {
     fn from(node_ptr: ConcreteNodePtr<K, V, PARTIAL_LEN>) -> Self {
         match node_ptr {
-            ConcreteNodePtr::Leaf(pointer) => OpaqueNodePtr::from(pointer),
-            ConcreteNodePtr::Inner4(pointer) => OpaqueNodePtr::from(pointer),
-            ConcreteNodePtr::Inner16(pointer) => OpaqueNodePtr::from(pointer),
-            ConcreteNodePtr::Inner48(pointer) => OpaqueNodePtr::from(pointer),
-            ConcreteNodePtr::Inner256(pointer) => OpaqueNodePtr::from(pointer),
+            ConcreteNodePtr::Leaf(pointer) => pointer.as_opaque(),
+            ConcreteNodePtr::Inner4(pointer) => pointer.as_opaque(),
+            ConcreteNodePtr::Inner16(pointer) => pointer.as_opaque(),
+            ConcreteNodePtr::Inner48(pointer) => pointer.as_opaque(),
+            ConcreteNodePtr::Inner256(pointer) => pointer.as_opaque(),
+        }
+    }
+}
+
+impl<K, V, const PARTIAL_LEN: usize> From<ConcreteInnerNodePtr<K, V, PARTIAL_LEN>>
+    for OpaqueNodePtr<K, V, PARTIAL_LEN>
+{
+    fn from(node_ptr: ConcreteInnerNodePtr<K, V, PARTIAL_LEN>) -> Self {
+        match node_ptr {
+            ConcreteInnerNodePtr::Inner4(pointer) => pointer.as_opaque(),
+            ConcreteInnerNodePtr::Inner16(pointer) => pointer.as_opaque(),
+            ConcreteInnerNodePtr::Inner48(pointer) => pointer.as_opaque(),
+            ConcreteInnerNodePtr::Inner256(pointer) => pointer.as_opaque(),
         }
     }
 }
@@ -136,10 +149,10 @@ impl<K, V, const PARTIAL_LEN: usize> From<ConcreteInnerNodePtr<K, V, PARTIAL_LEN
 {
     fn from(pointer: ConcreteInnerNodePtr<K, V, PARTIAL_LEN>) -> Self {
         match pointer {
-            ConcreteInnerNodePtr::Inner4(inner_ptr) => Self::Inner4(inner_ptr),
-            ConcreteInnerNodePtr::Inner16(inner_ptr) => Self::Inner16(inner_ptr),
-            ConcreteInnerNodePtr::Inner48(inner_ptr) => Self::Inner48(inner_ptr),
-            ConcreteInnerNodePtr::Inner256(inner_ptr) => Self::Inner256(inner_ptr),
+            ConcreteInnerNodePtr::Inner4(node_ptr) => Self::Inner4(node_ptr),
+            ConcreteInnerNodePtr::Inner16(node_ptr) => Self::Inner16(node_ptr),
+            ConcreteInnerNodePtr::Inner48(node_ptr) => Self::Inner48(node_ptr),
+            ConcreteInnerNodePtr::Inner256(node_ptr) => Self::Inner256(node_ptr),
         }
     }
 }
@@ -245,11 +258,11 @@ where
 {
     fn from(pointer: NodePtr<T>) -> Self {
         match T::TYPE {
+            NodeType::Leaf => unreachable!("invalid inner node type"),
             NodeType::Inner4 => Self::Inner4(pointer.as_ptr().cast().into()),
             NodeType::Inner16 => Self::Inner16(pointer.as_ptr().cast().into()),
             NodeType::Inner48 => Self::Inner48(pointer.as_ptr().cast().into()),
             NodeType::Inner256 => Self::Inner256(pointer.as_ptr().cast().into()),
-            _ => unreachable!("invalid inner node type"),
         }
     }
 }
@@ -312,6 +325,33 @@ impl<K, V, const PARTIAL_LEN: usize> fmt::Pointer for ConcreteInnerNodePtr<K, V,
     }
 }
 
+impl<K, V, const PARTIAL_LEN: usize> ConcreteInnerNodePtr<K, V, PARTIAL_LEN> {
+    /// Gets the [`OpaqueNodePtr`] represented by this opaque pointer.
+    pub fn as_opaque(self) -> OpaqueNodePtr<K, V, PARTIAL_LEN> {
+        self.into()
+    }
+
+    pub unsafe fn header<'a>(self) -> &'a Header<PARTIAL_LEN> {
+        let header_ptr = match self {
+            ConcreteInnerNodePtr::Inner4(node_ptr) => node_ptr.as_ptr().cast(),
+            ConcreteInnerNodePtr::Inner16(node_ptr) => node_ptr.as_ptr().cast(),
+            ConcreteInnerNodePtr::Inner48(node_ptr) => node_ptr.as_ptr().cast(),
+            ConcreteInnerNodePtr::Inner256(node_ptr) => node_ptr.as_ptr().cast(),
+        };
+        unsafe { header_ptr.as_ref() }
+    }
+
+    pub unsafe fn header_mut<'a>(self) -> &'a mut Header<PARTIAL_LEN> {
+        let mut header_ptr = match self {
+            ConcreteInnerNodePtr::Inner4(node_ptr) => node_ptr.as_ptr().cast(),
+            ConcreteInnerNodePtr::Inner16(node_ptr) => node_ptr.as_ptr().cast(),
+            ConcreteInnerNodePtr::Inner48(node_ptr) => node_ptr.as_ptr().cast(),
+            ConcreteInnerNodePtr::Inner256(node_ptr) => node_ptr.as_ptr().cast(),
+        };
+        unsafe { header_ptr.as_mut() }
+    }
+}
+
 /// A pointer to a node in a tree.
 #[repr(transparent)]
 pub struct NodePtr<T>(NonNull<T>);
@@ -356,7 +396,7 @@ impl<T> fmt::Pointer for NodePtr<T> {
 }
 
 impl<T> NodePtr<T> {
-    fn as_ptr(self) -> NonNull<T> {
+    pub fn as_ptr(self) -> NonNull<T> {
         self.0
     }
 }
@@ -378,7 +418,11 @@ impl<T> NodePtr<T> {
 
     /// Deallocates the node data located at the given pointer.
     pub unsafe fn dealloc(self) {
-        unsafe { alloc::dealloc(self.0.as_ptr().cast(), Self::LAYOUT) };
+        let node_ptr = self.0.as_ptr();
+        unsafe {
+            node_ptr.drop_in_place();
+            alloc::dealloc(node_ptr.cast(), Self::LAYOUT);
+        }
     }
 
     /// Returns a shared reference to the data behind this pointer.
@@ -389,5 +433,60 @@ impl<T> NodePtr<T> {
     /// Returns an owned reference to the data behind this pointer.
     pub unsafe fn as_mut<'a>(mut self) -> &'a mut T {
         unsafe { self.0.as_mut() }
+    }
+
+    pub fn as_opaque<const PARTIAL_LEN: usize>(self) -> OpaqueNodePtr<T::Key, T::Value, PARTIAL_LEN>
+    where
+        T: Node<PARTIAL_LEN>,
+    {
+        self.into()
+    }
+}
+
+/// A container for node pointers that deallocates all contained pointers when going out-of-scope.
+#[cfg(test)]
+pub struct NodePtrGuard<K, V, const PARTIAL_LEN: usize> {
+    pub ptrs: Vec<OpaqueNodePtr<K, V, PARTIAL_LEN>>,
+}
+
+#[cfg(test)]
+impl<K, V, const PARTIAL_LEN: usize> Drop for NodePtrGuard<K, V, PARTIAL_LEN> {
+    fn drop(&mut self) {
+        for ptr in self.ptrs.drain(..) {
+            unsafe {
+                match ptr.as_concrete() {
+                    super::ConcreteNodePtr::Leaf(node_ptr) => NodePtr::dealloc(node_ptr),
+                    super::ConcreteNodePtr::Inner4(node_ptr) => NodePtr::dealloc(node_ptr),
+                    super::ConcreteNodePtr::Inner16(node_ptr) => NodePtr::dealloc(node_ptr),
+                    super::ConcreteNodePtr::Inner48(node_ptr) => NodePtr::dealloc(node_ptr),
+                    super::ConcreteNodePtr::Inner256(node_ptr) => NodePtr::dealloc(node_ptr),
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+impl<K, V, const PARTIAL_LEN: usize> std::ops::Index<usize> for NodePtrGuard<K, V, PARTIAL_LEN> {
+    type Output = OpaqueNodePtr<K, V, PARTIAL_LEN>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.ptrs[index]
+    }
+}
+
+#[cfg(test)]
+impl<K, V, const PARTIAL_LEN: usize> NodePtrGuard<K, V, PARTIAL_LEN> {
+    pub fn new() -> Self {
+        Self { ptrs: Vec::new() }
+    }
+
+    pub fn manage<T>(&mut self, node: T) -> NodePtr<T>
+    where
+        T: Node<PARTIAL_LEN, Key = K, Value = V>,
+    {
+        let pointer = NodePtr::alloc(node);
+        self.ptrs.push(pointer.as_opaque());
+        pointer
     }
 }

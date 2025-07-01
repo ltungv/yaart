@@ -6,9 +6,9 @@ use super::{Header, Inner, Inner256, InnerSorted, Node, NodeType, OpaqueNodePtr}
 
 #[repr(C)]
 pub struct Inner48<K, V, const PARTIAL_LEN: usize> {
-    header: Header<PARTIAL_LEN>,
-    keys: [RestrictedIndex<48>; 256],
-    ptrs: [MaybeUninit<OpaqueNodePtr<K, V, PARTIAL_LEN>>; 48],
+    pub(crate) header: Header<PARTIAL_LEN>,
+    pub(crate) keys: [RestrictedIndex<48>; 256],
+    pub(crate) ptrs: [MaybeUninit<OpaqueNodePtr<K, V, PARTIAL_LEN>>; 48],
 }
 
 impl<K, V, const PARTIAL_LEN: usize> Sealed for Inner48<K, V, PARTIAL_LEN> {}
@@ -35,11 +35,32 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for Inner48<K, V, PARTIA
     type ShrunkNode = InnerSorted<K, V, PARTIAL_LEN, 16>;
 
     fn grow(&self) -> Self::GrownNode {
-        todo!()
+        let mut grown = Self::GrownNode::from(self.header.clone());
+        for key in u8::MIN..=u8::MAX {
+            let child_index = self.keys[key as usize];
+            if child_index.is_empty() {
+                continue;
+            }
+            let child = unsafe { self.ptrs[usize::from(child_index)].assume_init_read() };
+            grown.ptrs[key as usize] = Some(child);
+        }
+        grown
     }
 
     fn shrink(&self) -> Self::ShrunkNode {
-        todo!()
+        let mut shrunk = Self::ShrunkNode::from(self.header.clone());
+        let mut index = 0;
+        for key in u8::MIN..=u8::MAX {
+            let child_index = self.keys[key as usize];
+            if child_index.is_empty() {
+                continue;
+            }
+            let child = unsafe { self.ptrs[usize::from(child_index)].assume_init_read() };
+            shrunk.keys[index].write(key);
+            shrunk.ptrs[index].write(child);
+            index += 1;
+        }
+        shrunk
     }
 
     fn header(&self) -> &Header<PARTIAL_LEN> {
@@ -48,17 +69,17 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for Inner48<K, V, PARTIA
 
     fn add(
         &mut self,
-        key_partial: u8,
+        partial_key: u8,
         child_ptr: OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>,
     ) {
-        let key_partial_index = key_partial as usize;
-        let child_index = self.keys[key_partial_index];
+        let partial_key_index = partial_key as usize;
+        let child_index = self.keys[partial_key_index];
         if child_index.is_empty() {
             let child_index = self.header.children as usize;
             self.header.children += 1;
             self.ptrs[child_index].write(child_ptr);
-            self.keys[key_partial_index] =
-                RestrictedIndex::try_from(child_index).expect("node is not full");
+            self.keys[partial_key_index] =
+                RestrictedIndex::try_from(child_index).expect("index is within bounds");
         } else {
             self.ptrs[usize::from(child_index)].write(child_ptr);
         };
@@ -66,22 +87,22 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for Inner48<K, V, PARTIA
 
     fn del(
         &mut self,
-        key_partial: u8,
+        partial_key: u8,
     ) -> Option<OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>> {
-        let key_partial_index = key_partial as usize;
-        let child_index = self.keys[key_partial_index];
+        let partial_key_index = partial_key as usize;
+        let child_index = self.keys[partial_key_index];
         if child_index.is_empty() {
             None
         } else {
             self.header.children -= 1;
-            self.keys[key_partial_index] = RestrictedIndex::EMPTY;
+            self.keys[partial_key_index] = RestrictedIndex::EMPTY;
             Some(unsafe { self.ptrs[usize::from(child_index)].assume_init_read() })
         }
     }
 
-    fn get(&self, key_partial: u8) -> Option<OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>> {
-        let key_partial_index = key_partial as usize;
-        let child_index = self.keys[key_partial_index];
+    fn get(&self, partial_key: u8) -> Option<OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>> {
+        let partial_key_index = partial_key as usize;
+        let child_index = self.keys[partial_key_index];
         if child_index.is_empty() {
             None
         } else {
@@ -113,7 +134,7 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for Inner48<K, V, PARTIA
 }
 
 #[derive(Debug)]
-enum RestrictedIndexError {
+pub enum RestrictedIndexError {
     TryFromByte { limit: u8, value: usize },
 }
 
@@ -131,7 +152,7 @@ impl fmt::Display for RestrictedIndexError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
-struct RestrictedIndex<const LIMIT: u8>(u8);
+pub struct RestrictedIndex<const LIMIT: u8>(u8);
 
 impl<const LIMIT: u8> Default for RestrictedIndex<LIMIT> {
     fn default() -> Self {

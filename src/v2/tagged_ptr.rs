@@ -141,18 +141,6 @@ impl<P, const TAG_BITS: u32> TaggedPtr<P, TAG_BITS> {
 mod tests {
     use super::*;
 
-    fn tags_beyond_capacity<T, const TAG_BITS: u32>()
-    where
-        T: Default,
-    {
-        let mut pointee = T::default();
-        let mut tagged_ptr =
-            TaggedPtr::<_, TAG_BITS>::new(&raw mut pointee).expect("pointer is not null");
-
-        let free_bits = std::mem::align_of::<T>().trailing_zeros();
-        tagged_ptr.tags(usize::MAX >> (usize::BITS - free_bits - 1));
-    }
-
     #[test]
     fn it_works() {
         let mut pointee = "Hello world!";
@@ -170,85 +158,77 @@ mod tests {
         assert_eq!(unsafe { *tagged_ptr.as_ptr().as_ptr() }, "Hello world!");
     }
 
-    #[should_panic = "overflowing tags"]
-    #[test]
-    fn tags_beyond_capacity_u8() {
-        tags_beyond_capacity::<u8, 0>();
+    macro_rules! test_constants {
+        ($name:ident,$T:ty,$tag_bits:expr) => {
+            #[test]
+            fn $name() {
+                assert_eq!(
+                    TaggedPtr::<$T, $tag_bits>::ALIGNMENT,
+                    std::mem::align_of::<$T>()
+                );
+                assert_eq!(
+                    TaggedPtr::<$T, $tag_bits>::FREE_BITS,
+                    std::mem::align_of::<$T>().trailing_zeros()
+                );
+                assert_eq!(
+                    TaggedPtr::<$T, $tag_bits>::MASK_PTR,
+                    usize::MAX << std::mem::align_of::<$T>().trailing_zeros()
+                );
+            }
+        };
     }
 
-    #[should_panic = "overflowing tags"]
-    #[test]
-    fn tags_beyond_capacity_u16() {
-        tags_beyond_capacity::<u16, 1>();
+    macro_rules! test_tag_beyond_capacity {
+        ($name:ident,$T:ty,$tag_bits:expr) => {
+            #[should_panic = "overflowing tags"]
+            #[test]
+            fn $name() {
+                let mut pointee = <$T>::default();
+                let mut tagged_ptr =
+                    TaggedPtr::<_, $tag_bits>::new(&raw mut pointee).expect("pointer is not null");
+
+                let free_bits = std::mem::align_of::<$T>().trailing_zeros();
+                tagged_ptr.tags(usize::MAX >> (usize::BITS - free_bits - 1));
+            }
+        };
     }
 
-    #[should_panic = "overflowing tags"]
-    #[test]
-    fn tags_beyond_capacity_u32() {
-        tags_beyond_capacity::<u32, 2>();
+    macro_rules! test_tags_and_deref {
+        ($name:ident,$T:ty,$tag_bits:expr) => {
+            #[test]
+            fn $name() {
+                let mut pointee = <$T>::default();
+                let mut tagged_ptr =
+                    TaggedPtr::<_, $tag_bits>::new(&raw mut pointee).expect("pointer is not null");
+
+                let free_bits = std::mem::align_of::<$T>().trailing_zeros();
+                let tags = if free_bits == 0 {
+                    0
+                } else {
+                    usize::MAX >> (usize::BITS - free_bits)
+                };
+                tagged_ptr.tags(tags);
+                assert_eq!(tagged_ptr.as_tags(), tags,);
+                assert_eq!(unsafe { &*tagged_ptr.as_ptr().as_ptr() }, &pointee);
+            }
+        };
     }
 
-    #[should_panic = "overflowing tags"]
-    #[test]
-    fn tags_beyond_capacity_u64() {
-        tags_beyond_capacity::<u64, 3>();
-    }
+    test_constants!(constants_u8, u8, 0);
+    test_constants!(constants_u16, u16, 1);
+    test_constants!(constants_u32, u32, 2);
+    test_constants!(constants_u64, u64, 3);
+    test_constants!(constants_u128, u128, 4);
 
-    #[should_panic = "overflowing tags"]
-    #[test]
-    fn tags_beyond_capacity_u128() {
-        tags_beyond_capacity::<u128, 4>();
-    }
+    test_tag_beyond_capacity!(tags_beyond_capacity_u8, u8, 0);
+    test_tag_beyond_capacity!(tags_beyond_capacity_u16, u16, 1);
+    test_tag_beyond_capacity!(tags_beyond_capacity_u32, u32, 2);
+    test_tag_beyond_capacity!(tags_beyond_capacity_u64, u64, 3);
+    test_tag_beyond_capacity!(tags_beyond_capacity_u128, u128, 4);
 
-    #[test]
-    fn tags_of_various_sizes() {
-        fn assert<T, const TAG_BITS: u32>()
-        where
-            T: fmt::Debug + Default + PartialEq,
-        {
-            let mut pointee = T::default();
-            let mut tagged_ptr =
-                TaggedPtr::<_, TAG_BITS>::new(&raw mut pointee).expect("pointer is not null");
-
-            let free_bits = std::mem::align_of::<T>().trailing_zeros();
-            let tags = if free_bits == 0 {
-                0
-            } else {
-                usize::MAX >> (usize::BITS - free_bits)
-            };
-            tagged_ptr.tags(tags);
-            assert_eq!(tagged_ptr.as_tags(), tags,);
-            assert_eq!(unsafe { &*tagged_ptr.as_ptr().as_ptr() }, &pointee);
-        }
-        assert::<u8, 0>();
-        assert::<u16, 1>();
-        assert::<u32, 2>();
-        assert::<u64, 3>();
-        assert::<u128, 4>();
-    }
-
-    #[cfg(target_pointer_width = "64")]
-    #[test]
-    fn alignment_bits_and_mask_values() {
-        fn assert<T, const TAG_BITS: u32>() {
-            assert_eq!(
-                TaggedPtr::<T, TAG_BITS>::ALIGNMENT,
-                std::mem::align_of::<T>()
-            );
-            assert_eq!(
-                TaggedPtr::<T, TAG_BITS>::FREE_BITS,
-                std::mem::align_of::<T>().trailing_zeros()
-            );
-            assert_eq!(
-                TaggedPtr::<T, TAG_BITS>::MASK_PTR,
-                usize::MAX << std::mem::align_of::<T>().trailing_zeros()
-            );
-        }
-        assert::<(), 0>();
-        assert::<u8, 0>();
-        assert::<u16, 0>();
-        assert::<u32, 0>();
-        assert::<u64, 0>();
-        assert::<u128, 0>();
-    }
+    test_tags_and_deref!(tags_and_deref_u8, u8, 0);
+    test_tags_and_deref!(tags_and_deref_u16, u16, 1);
+    test_tags_and_deref!(tags_and_deref_u32, u32, 2);
+    test_tags_and_deref!(tags_and_deref_u64, u64, 3);
+    test_tags_and_deref!(tags_and_deref_u128, u128, 4);
 }

@@ -10,13 +10,16 @@ pub use search::*;
 
 /// A branch determines the origin of a node in the tree consisting of a pointer to the node's
 /// parent and a key partial that locates the node within its parent.
+#[derive(Debug, PartialEq, Eq)]
 pub struct Branch<K, V, const PARTIAL_LEN: usize> {
     pub ptr: ConcreteInnerNodePtr<K, V, PARTIAL_LEN>,
     pub key: u8,
 }
 
+/// An error from matching prefixes pessimistically.
+#[derive(Debug, PartialEq, Eq)]
 pub struct FullPrefixMismatch<K, V, const PARTIAL_LEN: usize> {
-    pub mismatch: u8,
     pub prefix_len: usize,
+    pub mismatched: u8,
     pub leaf: Option<NodePtr<Leaf<K, V>>>,
 }

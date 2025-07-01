@@ -1,5 +1,6 @@
 use crate::v2::compressed_path::CompressedPath;
 
+#[derive(Debug, Clone)]
 #[repr(C)]
 pub struct Header<const PARTIAL_LEN: usize> {
     pub children: u16,

@@ -1,14 +1,14 @@
 use std::mem::MaybeUninit;
 
-use crate::v2::Sealed;
+use crate::v2::{raw::RestrictedIndex, Sealed};
 
 use super::{Header, Inner, Inner48, Node, NodeType, OpaqueNodePtr};
 
 #[repr(C)]
 pub struct InnerSorted<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize> {
-    header: Header<PARTIAL_LEN>,
-    keys: [MaybeUninit<u8>; NUM_CHILDREN],
-    ptrs: [MaybeUninit<OpaqueNodePtr<K, V, PARTIAL_LEN>>; NUM_CHILDREN],
+    pub(crate) header: Header<PARTIAL_LEN>,
+    pub(crate) keys: [MaybeUninit<u8>; NUM_CHILDREN],
+    pub(crate) ptrs: [MaybeUninit<OpaqueNodePtr<K, V, PARTIAL_LEN>>; NUM_CHILDREN],
 }
 
 impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize> Sealed
@@ -39,11 +39,15 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for InnerSorted<K, V, PA
     type ShrunkNode = Self;
 
     fn grow(&self) -> Self::GrownNode {
-        todo!()
+        let children = self.header.children as usize;
+        let mut grown = Self::GrownNode::from(self.header.clone());
+        grown.keys[..children].copy_from_slice(&self.keys[..children]);
+        grown.ptrs[..children].copy_from_slice(&self.ptrs[..children]);
+        grown
     }
 
     fn shrink(&self) -> Self::ShrunkNode {
-        todo!()
+        unreachable!("shrink is impossible")
     }
 
     fn header(&self) -> &Header<PARTIAL_LEN> {
@@ -89,11 +93,22 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for InnerSorted<K, V, PA
     type ShrunkNode = InnerSorted<K, V, PARTIAL_LEN, 4>;
 
     fn grow(&self) -> Self::GrownNode {
-        todo!()
+        let mut grown = Self::GrownNode::from(self.header.clone());
+        for (index, key) in self.keys().iter().copied().enumerate() {
+            let child_index = RestrictedIndex::try_from(index).expect("index is within bounds");
+            grown.keys[usize::from(key)] = child_index;
+        }
+        let children = self.header.children as usize;
+        grown.ptrs[..children].copy_from_slice(&self.ptrs[..children]);
+        grown
     }
 
     fn shrink(&self) -> Self::ShrunkNode {
-        todo!()
+        let children = self.header.children as usize;
+        let mut shrunk = Self::ShrunkNode::from(self.header.clone());
+        shrunk.keys[..children].copy_from_slice(&self.keys[..children]);
+        shrunk.ptrs[..children].copy_from_slice(&self.ptrs[..children]);
+        shrunk
     }
 
     fn header(&self) -> &Header<PARTIAL_LEN> {
@@ -189,8 +204,11 @@ impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
         let pos = match self.search(key_partial) {
             SearchResult::Found(pos) => pos,
             SearchResult::Insert(pos) => {
-                self.keys[pos..].rotate_right(1);
-                self.ptrs[pos..].rotate_right(1);
+                println!("{pos}");
+                let len = self.header.children as usize;
+                self.header.children += 1;
+                self.keys.copy_within(pos..len, pos + 1);
+                self.ptrs.copy_within(pos..len, pos + 1);
                 pos
             }
             SearchResult::NotFound(pos) => {
@@ -208,9 +226,10 @@ impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
             return None;
         };
         let child = self.ptrs()[pos];
+        let len = self.header.children as usize;
         self.header.children -= 1;
-        self.keys[pos..].rotate_left(1);
-        self.ptrs[pos..].rotate_left(1);
+        self.keys.copy_within(pos + 1..len, pos);
+        self.ptrs.copy_within(pos + 1..len, pos);
         Some(child)
     }
 
@@ -224,6 +243,7 @@ impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
 
     #[inline]
     fn min(&self) -> (u8, OpaqueNodePtr<K, V, PARTIAL_LEN>) {
+        assert_ne!(self.header.children, 0, "node is empty");
         let keys = self.keys();
         let ptrs = self.ptrs();
         (keys[0], ptrs[0])
@@ -231,6 +251,7 @@ impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
 
     #[inline]
     fn max(&self) -> (u8, OpaqueNodePtr<K, V, PARTIAL_LEN>) {
+        assert_ne!(self.header.children, 0, "node is empty");
         let n = self.header.children as usize - 1;
         let keys = self.keys();
         let ptrs = self.ptrs();
