@@ -1,4 +1,4 @@
-use std::{cmp, error, fmt, mem::MaybeUninit, usize};
+use std::{cmp, error, fmt, mem::MaybeUninit};
 
 use crate::v2::Sealed;
 
@@ -82,7 +82,7 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for Inner48<K, V, PARTIA
                 RestrictedIndex::try_from(child_index).expect("index is within bounds");
         } else {
             self.ptrs[usize::from(child_index)].write(child_ptr);
-        };
+        }
     }
 
     fn del(
@@ -143,7 +143,7 @@ impl error::Error for RestrictedIndexError {}
 impl fmt::Display for RestrictedIndexError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RestrictedIndexError::TryFromByte { limit, value } => {
+            Self::TryFromByte { limit, value } => {
                 write!(f, "value is out-of-bound ({value} > {limit})")
             }
         }
@@ -161,7 +161,7 @@ impl<const LIMIT: u8> Default for RestrictedIndex<LIMIT> {
 }
 
 impl<const LIMIT: u8> RestrictedIndex<LIMIT> {
-    const EMPTY: Self = RestrictedIndex(LIMIT);
+    const EMPTY: Self = Self(LIMIT);
 
     fn is_empty(self) -> bool {
         self == Self::EMPTY
@@ -176,7 +176,7 @@ impl<const LIMIT: u8> From<RestrictedIndex<LIMIT>> for u8 {
 
 impl<const LIMIT: u8> From<RestrictedIndex<LIMIT>> for usize {
     fn from(src: RestrictedIndex<LIMIT>) -> Self {
-        usize::from(src.0)
+        Self::from(src.0)
     }
 }
 
@@ -185,7 +185,7 @@ impl<const LIMIT: u8> TryFrom<u8> for RestrictedIndex<LIMIT> {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         if value < LIMIT {
-            Ok(RestrictedIndex(value))
+            Ok(Self(value))
         } else {
             Err(RestrictedIndexError::TryFromByte {
                 limit: LIMIT,
@@ -198,9 +198,10 @@ impl<const LIMIT: u8> TryFrom<u8> for RestrictedIndex<LIMIT> {
 impl<const LIMIT: u8> TryFrom<usize> for RestrictedIndex<LIMIT> {
     type Error = RestrictedIndexError;
 
+    #[allow(clippy::cast_possible_truncation)]
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         if value < usize::from(LIMIT) {
-            Ok(RestrictedIndex(value as u8))
+            Ok(Self(value as u8))
         } else {
             Err(RestrictedIndexError::TryFromByte {
                 limit: LIMIT,

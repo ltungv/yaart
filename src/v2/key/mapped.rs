@@ -108,8 +108,8 @@ where
     M: BytesMapping<T>,
 {
     /// Creates a new container for some decomposed bytes.
-    pub fn with_key(key: M::Key) -> Self {
-        Mapped {
+    pub const fn with_key(key: M::Key) -> Self {
+        Self {
             key,
             _marker: PhantomData,
         }

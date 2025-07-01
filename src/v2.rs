@@ -23,9 +23,16 @@ pub struct RadixTreeMap<K, V, const PARTIAL_LEN: usize = 8> {
     state: Option<NonEmptyRadixTree<K, V, PARTIAL_LEN>>,
 }
 
+impl<K, V, const PARTIAL_LEN: usize> Default for RadixTreeMap<K, V, PARTIAL_LEN> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<K, V, const PARTIAL_LEN: usize> RadixTreeMap<K, V, PARTIAL_LEN> {
     /// Creates a new empty tree.
-    pub fn new() -> Self {
+    #[must_use]
+    pub const fn new() -> Self {
         Self { state: None }
     }
 
@@ -58,8 +65,9 @@ mod tests {
 
     #[test]
     fn test() {
-        let mut m = RadixTreeMap::<Vec<u8>, usize>::new();
-        m.insert(b"and".to_vec(), 0);
-        m.insert(b"ant".to_vec(), 0);
+        let mut m = RadixTreeMap::<Vec<u8>, usize, 4>::new();
+        m.insert(b"abcdef_0".to_vec(), 0);
+        m.insert(b"abcdef_1".to_vec(), 0);
+        m.insert(b"abcxyz".to_vec(), 0);
     }
 }

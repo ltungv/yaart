@@ -22,7 +22,7 @@ impl<K, V, const PARTIAL_LEN: usize> Node<PARTIAL_LEN> for Leaf<K, V> {
 }
 
 impl<K, V> Leaf<K, V> {
-    pub fn new(key: K, value: V) -> Self {
+    pub const fn new(key: K, value: V) -> Self {
         Self { key, value }
     }
 }

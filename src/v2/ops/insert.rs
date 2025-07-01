@@ -47,6 +47,7 @@ pub struct Insertion<K, V, const PARTIAL_LEN: usize> {
 }
 
 impl<K, V, const PARTIAL_LEN: usize> Insertion<K, V, PARTIAL_LEN> {
+    #[allow(clippy::too_many_lines)]
     pub unsafe fn apply<'a>(self, key: K, value: V) -> Inserted<'a, K, V, PARTIAL_LEN>
     where
         K: BytesRepr,
@@ -188,6 +189,7 @@ impl<K, V, const PARTIAL_LEN: usize> Insertion<K, V, PARTIAL_LEN> {
 
     /// Searches from the root node for a point in the tree where a leaf having the given search
     /// key can be inserted.
+    #[allow(clippy::too_many_lines)]
     pub unsafe fn prepare(root: OpaqueNodePtr<K, V, PARTIAL_LEN>, search_key: SearchKey<'_>) -> Self
     where
         K: BytesRepr,
@@ -338,6 +340,7 @@ mod tests {
 
     macro_rules! test_prepare {
         ($name:ident,$T:ty) => {
+            #[allow(clippy::too_many_lines)]
             #[test]
             fn $name() {
                 let mut guard = NodePtrGuard::new();

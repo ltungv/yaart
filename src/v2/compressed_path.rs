@@ -69,7 +69,7 @@ impl<const PARTIAL_LEN: usize> CompressedPath<PARTIAL_LEN> {
         path
     }
 
-    pub fn prefix_len(&self) -> usize {
+    pub const fn prefix_len(&self) -> usize {
         self.prefix_len
     }
 

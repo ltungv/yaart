@@ -12,16 +12,15 @@ impl<'a> From<&'a [u8]> for SearchKey<'a> {
     }
 }
 
-
-impl<'a> Deref for SearchKey<'_> {
+impl Deref for SearchKey<'_> {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
-        &self.elems
+        self.elems
     }
 }
 
-impl<'a> Index<usize> for SearchKey<'a> {
+impl Index<usize> for SearchKey<'_> {
     type Output = u8;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -35,7 +34,7 @@ impl<'a> IntoIterator for SearchKey<'a> {
     type IntoIter = <&'a [u8] as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.elems.into_iter()
+        self.elems.iter()
     }
 }
 
@@ -46,21 +45,21 @@ impl<'a> SearchKey<'a> {
     }
 
     /// Returns a new search key whose slice starts from the given index.
-    pub fn shift(self, index: usize) -> SearchKey<'a> {
+    pub fn shift(self, index: usize) -> Self {
         SearchKey {
-            elems: &self.elems.as_ref()[index..],
+            elems: &self.elems[index..],
         }
     }
 
     /// Returns a new search key whose slice starts from the given index and has the given length.
-    pub fn range(self, index: usize, len: usize) -> SearchKey<'a> {
+    pub fn range(self, index: usize, len: usize) -> Self {
         SearchKey {
-            elems: &self.elems.as_ref()[index..index + len],
+            elems: &self.elems[index..index + len],
         }
     }
 
     /// Returns the length of the common prefix between two [`SearchKey`]s.
-    pub fn common_prefix_len<'b>(self, other: SearchKey<'b>) -> usize {
+    pub fn common_prefix_len(self, other: SearchKey<'_>) -> usize {
         self.into_iter()
             .zip(other)
             .take_while(|(x, y)| x == y)

@@ -170,32 +170,32 @@ impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
     fn search(&self, key_partial: u8) -> SearchResult {
         let keys = self.keys();
         if NUM_CHILDREN < 16 {
-            match keys.iter().position(|&k| k >= key_partial) {
-                None => SearchResult::NotFound(self.header.children as usize),
-                Some(pos) => {
+            keys.iter().position(|&k| k >= key_partial).map_or_else(
+                || SearchResult::NotFound(self.header.children as usize),
+                |pos| {
                     if keys[pos] == key_partial {
                         SearchResult::Found(pos)
                     } else {
                         SearchResult::Insert(pos)
                     }
-                }
-            }
+                },
+            )
         } else {
-            match keys.binary_search(&key_partial) {
-                Ok(pos) => SearchResult::Found(pos),
-                Err(pos) => {
+            keys.binary_search(&key_partial).map_or_else(
+                |pos| {
                     if pos < keys.len() {
                         SearchResult::Insert(pos)
                     } else {
                         SearchResult::NotFound(pos)
                     }
-                }
-            }
+                },
+                SearchResult::Found,
+            )
         }
     }
 
     #[inline]
-    fn header(&self) -> &Header<PARTIAL_LEN> {
+    const fn header(&self) -> &Header<PARTIAL_LEN> {
         &self.header
     }
 

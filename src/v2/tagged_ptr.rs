@@ -40,7 +40,7 @@ impl<P, const TAG_BITS: u32> From<NonNull<P>> for TaggedPtr<P, TAG_BITS> {
 }
 
 impl<P, const TAG_BITS: u32> From<TaggedPtr<P, TAG_BITS>> for NonNull<P> {
-    fn from(tagged_ptr: TaggedPtr<P, TAG_BITS>) -> NonNull<P> {
+    fn from(tagged_ptr: TaggedPtr<P, TAG_BITS>) -> Self {
         tagged_ptr.as_ptr()
     }
 }

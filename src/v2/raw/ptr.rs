@@ -10,6 +10,9 @@ use crate::v2::tagged_ptr::TaggedPtr;
 
 use super::{Header, Inner, Inner256, Inner48, InnerSorted, Leaf, Node, NodeType};
 
+#[cfg(test)]
+pub use tests::*;
+
 /// A [`TaggedPtr`] to the header of a node in a tree in which the pointer is tagged with the type
 /// of the node containing the header.
 ///
@@ -65,7 +68,7 @@ where
     fn from(node_ptr: NodePtr<T>) -> Self {
         let mut tagged_ptr = TaggedPtr::from(node_ptr.as_ptr()).cast();
         tagged_ptr.tags(T::TYPE as usize);
-        OpaqueNodePtr(tagged_ptr, PhantomData)
+        Self(tagged_ptr, PhantomData)
     }
 }
 
@@ -104,6 +107,7 @@ impl<K, V, const PARTIAL_LEN: usize> OpaqueNodePtr<K, V, PARTIAL_LEN> {
     }
 
     /// Gets the node type from the tags of the pointer.
+    #[allow(clippy::cast_possible_truncation)]
     pub fn as_type(self) -> NodeType {
         unsafe { std::mem::transmute(self.0.as_tags() as u8) }
     }
@@ -331,22 +335,22 @@ impl<K, V, const PARTIAL_LEN: usize> ConcreteInnerNodePtr<K, V, PARTIAL_LEN> {
         self.into()
     }
 
-    pub unsafe fn header<'a>(self) -> &'a Header<PARTIAL_LEN> {
+    pub const unsafe fn header<'a>(self) -> &'a Header<PARTIAL_LEN> {
         let header_ptr = match self {
-            ConcreteInnerNodePtr::Inner4(node_ptr) => node_ptr.as_ptr().cast(),
-            ConcreteInnerNodePtr::Inner16(node_ptr) => node_ptr.as_ptr().cast(),
-            ConcreteInnerNodePtr::Inner48(node_ptr) => node_ptr.as_ptr().cast(),
-            ConcreteInnerNodePtr::Inner256(node_ptr) => node_ptr.as_ptr().cast(),
+            Self::Inner4(node_ptr) => node_ptr.as_ptr().cast(),
+            Self::Inner16(node_ptr) => node_ptr.as_ptr().cast(),
+            Self::Inner48(node_ptr) => node_ptr.as_ptr().cast(),
+            Self::Inner256(node_ptr) => node_ptr.as_ptr().cast(),
         };
         unsafe { header_ptr.as_ref() }
     }
 
-    pub unsafe fn header_mut<'a>(self) -> &'a mut Header<PARTIAL_LEN> {
+    pub const unsafe fn header_mut<'a>(self) -> &'a mut Header<PARTIAL_LEN> {
         let mut header_ptr = match self {
-            ConcreteInnerNodePtr::Inner4(node_ptr) => node_ptr.as_ptr().cast(),
-            ConcreteInnerNodePtr::Inner16(node_ptr) => node_ptr.as_ptr().cast(),
-            ConcreteInnerNodePtr::Inner48(node_ptr) => node_ptr.as_ptr().cast(),
-            ConcreteInnerNodePtr::Inner256(node_ptr) => node_ptr.as_ptr().cast(),
+            Self::Inner4(node_ptr) => node_ptr.as_ptr().cast(),
+            Self::Inner16(node_ptr) => node_ptr.as_ptr().cast(),
+            Self::Inner48(node_ptr) => node_ptr.as_ptr().cast(),
+            Self::Inner256(node_ptr) => node_ptr.as_ptr().cast(),
         };
         unsafe { header_ptr.as_mut() }
     }
@@ -396,7 +400,7 @@ impl<T> fmt::Pointer for NodePtr<T> {
 }
 
 impl<T> NodePtr<T> {
-    pub fn as_ptr(self) -> NonNull<T> {
+    pub const fn as_ptr(self) -> NonNull<T> {
         self.0
     }
 }
@@ -405,7 +409,7 @@ impl<T> NodePtr<T> {
     const LAYOUT: Layout = Layout::new::<T>();
 
     /// Allocates a new node and returns a pointer to its data.
-    pub fn alloc(node: T) -> NodePtr<T> {
+    pub fn alloc(node: T) -> Self {
         let unchecked_ptr = unsafe { alloc::alloc(Self::LAYOUT) };
         let Some(ptr) = NonNull::new(unchecked_ptr.cast::<T>()) else {
             std::alloc::handle_alloc_error(Self::LAYOUT);
@@ -413,7 +417,7 @@ impl<T> NodePtr<T> {
         unsafe {
             ptr.write(node);
         }
-        NodePtr(ptr)
+        Self(ptr)
     }
 
     /// Deallocates the node data located at the given pointer.
@@ -426,12 +430,12 @@ impl<T> NodePtr<T> {
     }
 
     /// Returns a shared reference to the data behind this pointer.
-    pub unsafe fn as_ref<'a>(self) -> &'a T {
+    pub const unsafe fn as_ref<'a>(self) -> &'a T {
         unsafe { self.0.as_ref() }
     }
 
     /// Returns an owned reference to the data behind this pointer.
-    pub unsafe fn as_mut<'a>(mut self) -> &'a mut T {
+    pub const unsafe fn as_mut<'a>(mut self) -> &'a mut T {
         unsafe { self.0.as_mut() }
     }
 
@@ -443,50 +447,66 @@ impl<T> NodePtr<T> {
     }
 }
 
-/// A container for node pointers that deallocates all contained pointers when going out-of-scope.
 #[cfg(test)]
-pub struct NodePtrGuard<K, V, const PARTIAL_LEN: usize> {
-    pub ptrs: Vec<OpaqueNodePtr<K, V, PARTIAL_LEN>>,
-}
+pub mod tests {
+    use std::collections::HashSet;
 
-#[cfg(test)]
-impl<K, V, const PARTIAL_LEN: usize> Drop for NodePtrGuard<K, V, PARTIAL_LEN> {
-    fn drop(&mut self) {
-        for ptr in self.ptrs.drain(..) {
-            unsafe {
-                match ptr.as_concrete() {
-                    super::ConcreteNodePtr::Leaf(node_ptr) => NodePtr::dealloc(node_ptr),
-                    super::ConcreteNodePtr::Inner4(node_ptr) => NodePtr::dealloc(node_ptr),
-                    super::ConcreteNodePtr::Inner16(node_ptr) => NodePtr::dealloc(node_ptr),
-                    super::ConcreteNodePtr::Inner48(node_ptr) => NodePtr::dealloc(node_ptr),
-                    super::ConcreteNodePtr::Inner256(node_ptr) => NodePtr::dealloc(node_ptr),
+    use crate::v2::raw::Node;
+
+    use super::{NodePtr, OpaqueNodePtr};
+
+    /// A container for node pointers that deallocates all contained pointers when going out-of-scope.
+    #[cfg(test)]
+    pub struct NodePtrGuard<K, V, const PARTIAL_LEN: usize> {
+        pub ptrs: Vec<OpaqueNodePtr<K, V, PARTIAL_LEN>>,
+        uniqueness: HashSet<OpaqueNodePtr<K, V, PARTIAL_LEN>>,
+    }
+
+    #[cfg(test)]
+    impl<K, V, const PARTIAL_LEN: usize> Drop for NodePtrGuard<K, V, PARTIAL_LEN> {
+        fn drop(&mut self) {
+            for ptr in self.ptrs.drain(..) {
+                unsafe {
+                    match ptr.as_concrete() {
+                        super::ConcreteNodePtr::Leaf(node_ptr) => NodePtr::dealloc(node_ptr),
+                        super::ConcreteNodePtr::Inner4(node_ptr) => NodePtr::dealloc(node_ptr),
+                        super::ConcreteNodePtr::Inner16(node_ptr) => NodePtr::dealloc(node_ptr),
+                        super::ConcreteNodePtr::Inner48(node_ptr) => NodePtr::dealloc(node_ptr),
+                        super::ConcreteNodePtr::Inner256(node_ptr) => NodePtr::dealloc(node_ptr),
+                    }
                 }
             }
         }
     }
-}
 
-#[cfg(test)]
-impl<K, V, const PARTIAL_LEN: usize> std::ops::Index<usize> for NodePtrGuard<K, V, PARTIAL_LEN> {
-    type Output = OpaqueNodePtr<K, V, PARTIAL_LEN>;
+    #[cfg(test)]
+    impl<K, V, const PARTIAL_LEN: usize> std::ops::Index<usize> for NodePtrGuard<K, V, PARTIAL_LEN> {
+        type Output = OpaqueNodePtr<K, V, PARTIAL_LEN>;
 
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.ptrs[index]
-    }
-}
-
-#[cfg(test)]
-impl<K, V, const PARTIAL_LEN: usize> NodePtrGuard<K, V, PARTIAL_LEN> {
-    pub fn new() -> Self {
-        Self { ptrs: Vec::new() }
+        fn index(&self, index: usize) -> &Self::Output {
+            &self.ptrs[index]
+        }
     }
 
-    pub fn manage<T>(&mut self, node: T) -> NodePtr<T>
-    where
-        T: Node<PARTIAL_LEN, Key = K, Value = V>,
-    {
-        let pointer = NodePtr::alloc(node);
-        self.ptrs.push(pointer.as_opaque());
-        pointer
+    #[cfg(test)]
+    impl<K, V, const PARTIAL_LEN: usize> NodePtrGuard<K, V, PARTIAL_LEN> {
+        pub fn new() -> Self {
+            Self {
+                ptrs: Vec::new(),
+                uniqueness: HashSet::new(),
+            }
+        }
+
+        pub fn manage<T>(&mut self, node: T) -> NodePtr<T>
+        where
+            T: Node<PARTIAL_LEN, Key = K, Value = V>,
+        {
+            let pointer = NodePtr::alloc(node);
+            let opaqe_ptr = pointer.as_opaque();
+            if self.uniqueness.insert(opaqe_ptr) {
+                self.ptrs.push(opaqe_ptr);
+            }
+            pointer
+        }
     }
 }

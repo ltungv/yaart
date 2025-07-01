@@ -98,6 +98,7 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
 
     /// Reads the full prefix of this node, and searches a descendant leaf node to find implicit
     /// bytes if necessary.
+    #[allow(clippy::type_complexity)]
     fn read_full_prefix(
         &self,
         current_depth: usize,
@@ -158,7 +159,7 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
 mod tests {
     use crate::v2::{
         compressed_path::CompressedPath,
-        raw::{Inner256, Inner48, NodePtrGuard},
+        raw::{ptr::tests::NodePtrGuard, Inner256, Inner48},
         search_key::SearchKey,
     };
 
@@ -200,7 +201,7 @@ mod tests {
                 assert!(!grown.is_full());
                 for i in max_partial_key + 1..=grown_max_partial_key {
                     grown.add(i, leaves[i as usize].into());
-                    assert_eq!(grown.header().children, i as u16 + 1)
+                    assert_eq!(grown.header().children, u16::from(i) + 1)
                 }
 
                 assert!(grown.is_full());
@@ -249,7 +250,7 @@ mod tests {
                 let mut inner = <$T>::from(Header::from(CompressedPath::default()));
                 for i in 0..=max_partial_key {
                     inner.add(i, leaves[i as usize].into());
-                    assert_eq!(inner.header().children, i as u16 + 1)
+                    assert_eq!(inner.header().children, u16::from(i) + 1)
                 }
                 for i in 0..=max_partial_key {
                     assert_eq!(inner.get(i), Some(leaves[i as usize].into()))
@@ -271,7 +272,7 @@ mod tests {
                     }
                     for i in 0..=max_partial_key {
                         inner.add(i, leaves[i as usize].into());
-                        assert_eq!(inner.header().children, i as u16 + 1)
+                        assert_eq!(inner.header().children, u16::from(i) + 1)
                     }
                     for i in 0..=max_partial_key {
                         assert_eq!(inner.del(i), Some(leaves[i as usize].into()));
@@ -285,7 +286,7 @@ mod tests {
                     }
                     for i in 0..=max_partial_key {
                         inner.add(i, leaves[i as usize].into());
-                        assert_eq!(inner.header().children, i as u16 + 1)
+                        assert_eq!(inner.header().children, u16::from(i) + 1)
                     }
                     for i in 0..=max_partial_key {
                         assert_eq!(inner.get(i), Some(leaves[i as usize].into()))
@@ -308,7 +309,7 @@ mod tests {
                     }
                     for i in 0u8..=max_partial_key {
                         inner.add(i, leaves[i as usize].into());
-                        assert_eq!(inner.header().children, i as u16 + 1)
+                        assert_eq!(inner.header().children, u16::from(i) + 1)
                     }
                     for i in 0u8..=max_partial_key {
                         assert_eq!(inner.get(i), Some(leaves[i as usize].into()))
