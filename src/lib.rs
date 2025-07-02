@@ -9,7 +9,11 @@
     missing_docs
 )]
 #![warn(rustdoc::all, clippy::pedantic, clippy::nursery)]
-#![allow(edition_2024_expr_fragment_specifier)]
+#![allow(
+    edition_2024_expr_fragment_specifier,
+    clippy::too_many_lines,
+    clippy::type_complexity
+)]
 
 mod art;
 mod bytes_comparable;

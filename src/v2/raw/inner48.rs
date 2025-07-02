@@ -273,9 +273,11 @@ impl<const LIMIT: u8> TryFrom<u8> for RestrictedIndex<LIMIT> {
 impl<const LIMIT: u8> TryFrom<usize> for RestrictedIndex<LIMIT> {
     type Error = RestrictedIndexError;
 
-    #[allow(clippy::cast_possible_truncation)]
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         if value < usize::from(LIMIT) {
+            // SAFETY: Casting `value` from being an `usize` to being an `u8` is safe since `value`
+            // is less than `Self::LIMIT` which is an `u8`.
+            #[allow(clippy::cast_possible_truncation)]
             Ok(Self(value as u8))
         } else {
             Err(RestrictedIndexError::TryFromByte {

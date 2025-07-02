@@ -16,7 +16,6 @@ impl<K, V, const PARTIAL_LEN: usize> Fmt<K, V, PARTIAL_LEN> {
         K: BytesRepr,
         V: fmt::Debug,
     {
-        #[allow(clippy::type_complexity)]
         fn visit<T, const PARTIAL_LEN: usize>(
             stack: &mut Vec<(usize, u8, OpaqueNodePtr<T::Key, T::Value, PARTIAL_LEN>)>,
             f: &mut fmt::Formatter<'_>,
@@ -34,7 +33,11 @@ impl<K, V, const PARTIAL_LEN: usize> Fmt<K, V, PARTIAL_LEN> {
             for (key, ptr) in inner.iter().rev() {
                 stack.push((height + 1, key, ptr));
             }
-            writeln!(f, "{indent} {partial_key:0>3} --> {:?}", inner.header().path)
+            writeln!(
+                f,
+                "{indent} {partial_key:0>3} --> {:?}",
+                inner.header().path
+            )
         }
 
         let mut stack = Vec::new();

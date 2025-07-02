@@ -110,14 +110,12 @@ impl<P, const TAG_BITS: u32> TaggedPtr<P, TAG_BITS> {
     }
 
     /// Gets a normalized pointer from the tagged pointer.
-    #[inline]
     pub fn as_ptr(self) -> NonNull<P> {
         self.0
             .map_addr(|addr| unsafe { NonZeroUsize::new_unchecked(addr.get() & Self::MASK_PTR) })
     }
 
     /// Gets the tags from the tagged pointer.
-    #[inline]
     pub fn as_tags(self) -> usize {
         self.0.addr().get() & Self::MARK_TAGS
     }

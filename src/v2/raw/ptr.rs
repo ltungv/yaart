@@ -107,9 +107,14 @@ impl<K, V, const PARTIAL_LEN: usize> OpaqueNodePtr<K, V, PARTIAL_LEN> {
     }
 
     /// Gets the node type from the tags of the pointer.
-    #[allow(clippy::cast_possible_truncation)]
     pub fn as_type(self) -> NodeType {
-        unsafe { std::mem::transmute(self.0.as_tags() as u8) }
+        // SAFETY: Casting the pointer's tags to being an `u8` and transmuting the result to become
+        // a `NodeType` is safe because the tagged pointer within `OpaqueNodePtr` is ensured to
+        // contain a tags of type `NodeType`.
+        unsafe {
+            #[allow(clippy::cast_possible_truncation)]
+            std::mem::transmute(self.0.as_tags() as u8)
+        }
     }
 
     /// Gets the [`ConcreteNodePtr`] represented by this opaque pointer.

@@ -85,7 +85,6 @@ impl<K, V, const PARTIAL_LEN: usize> Search<K, V, PARTIAL_LEN> {
     where
         K: BytesRepr,
     {
-        #[inline]
         fn descend<T, K, V, const PARTIAL_LEN: usize>(
             search_strategy: &mut SearchStrategy,
             current_depth: &mut usize,

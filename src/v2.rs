@@ -2,6 +2,7 @@ use std::borrow::Borrow;
 use std::fmt;
 use std::num::NonZeroUsize;
 
+use ops::Dealloc;
 use ops::Fmt;
 use ops::Insert;
 use ops::Search;
@@ -18,6 +19,7 @@ mod tagged_ptr;
 use raw::NodePtr;
 
 pub use key::*;
+pub use search_key::*;
 
 /// A trait that seals other traits to disallow them from being implemented by external
 /// modules/crates.
@@ -54,19 +56,16 @@ impl<K, V, const PARTIAL_LEN: usize> RadixTreeMap<K, V, PARTIAL_LEN> {
         Self { state: None }
     }
 
+    /// Returns whether the map is empty.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.state.is_none()
+    }
+
     /// Returns the number of existing entries in the map.
     #[must_use]
     pub fn len(&self) -> usize {
-        let Some(s) = &self.state else {
-            return 0;
-        };
-        usize::from(s.len)
-    }
-
-    /// Returns whether the map is empty.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.state.as_ref().map_or(0, NonEmptyRadixTree::len)
     }
 
     /// Gets a key-value pair from the map given the key.
@@ -75,12 +74,7 @@ impl<K, V, const PARTIAL_LEN: usize> RadixTreeMap<K, V, PARTIAL_LEN> {
         K: BytesRepr + Borrow<Q>,
         Q: BytesRepr + ?Sized,
     {
-        let Some(state) = &self.state else {
-            return None;
-        };
-        let leaf_ptr = unsafe { Search::exact(state.root, key.repr())? };
-        let leaf = unsafe { leaf_ptr.as_ref() };
-        Some(&leaf.value)
+        self.state.as_ref().and_then(|s| s.get(key))
     }
 
     /// Inserts a key-value pair into the map.
@@ -89,19 +83,10 @@ impl<K, V, const PARTIAL_LEN: usize> RadixTreeMap<K, V, PARTIAL_LEN> {
         K: BytesRepr,
     {
         let Some(state) = &mut self.state else {
-            self.state = Some(NonEmptyRadixTree {
-                len: unsafe { NonZeroUsize::new_unchecked(1) },
-                root: NodePtr::alloc(Leaf::new(key, value)).as_opaque(),
-            });
+            self.state = Some(NonEmptyRadixTree::new(Leaf::new(key, value)));
             return None;
         };
-        let inserted = unsafe { Insert::prepare(state.root, key.repr()).apply(key, value) };
-        let Some(len) = state.len.checked_add(usize::from(inserted.prev.is_none())) else {
-            unreachable!("index overflows");
-        };
-        state.len = len;
-        state.root = inserted.root;
-        inserted.prev.map(|l| l.value)
+        state.insert(key, value)
     }
 }
 
@@ -109,6 +94,50 @@ impl<K, V, const PARTIAL_LEN: usize> RadixTreeMap<K, V, PARTIAL_LEN> {
 struct NonEmptyRadixTree<K, V, const PARTIAL_LEN: usize> {
     len: NonZeroUsize,
     root: OpaqueNodePtr<K, V, PARTIAL_LEN>,
+}
+
+impl<K, V, const PARTIAL_LEN: usize> Drop for NonEmptyRadixTree<K, V, PARTIAL_LEN> {
+    fn drop(&mut self) {
+        unsafe {
+            Dealloc::tree(self.root);
+        }
+    }
+}
+
+impl<K, V, const PARTIAL_LEN: usize> NonEmptyRadixTree<K, V, PARTIAL_LEN> {
+    fn new(leaf: Leaf<K, V>) -> Self {
+        Self {
+            len: unsafe { NonZeroUsize::new_unchecked(1) },
+            root: NodePtr::alloc(leaf).as_opaque(),
+        }
+    }
+
+    fn len(&self) -> usize {
+        usize::from(self.len)
+    }
+
+    fn insert(&mut self, key: K, value: V) -> Option<V>
+    where
+        K: BytesRepr,
+    {
+        let inserted = unsafe { Insert::prepare(self.root, key.repr()).apply(key, value) };
+        let Some(len) = self.len.checked_add(usize::from(inserted.prev.is_none())) else {
+            unreachable!("index overflows");
+        };
+        self.len = len;
+        self.root = inserted.root;
+        inserted.prev.map(|l| l.value)
+    }
+
+    fn get<Q>(&self, key: &Q) -> Option<&V>
+    where
+        K: BytesRepr + Borrow<Q>,
+        Q: BytesRepr + ?Sized,
+    {
+        let leaf_ptr = unsafe { Search::exact(self.root, key.repr())? };
+        let leaf = unsafe { leaf_ptr.as_ref() };
+        Some(&leaf.value)
+    }
 }
 
 #[cfg(test)]

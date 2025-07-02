@@ -2,15 +2,9 @@ use std::{
     collections::BTreeMap,
     fs::File,
     io::{BufRead, BufReader},
-    ops::Range,
     time::Instant,
 };
 
-use rand::{
-    distr::{Alphanumeric, Distribution, StandardUniform},
-    seq::SliceRandom,
-    Rng, SeedableRng,
-};
 use yaart::RadixTreeMap;
 
 fn main() {

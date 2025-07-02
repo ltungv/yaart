@@ -36,6 +36,8 @@ pub enum NodeType {
     Inner256 = 4,
 }
 
+// NOTE: We want `Node` to extend `Sealed`, which is private to the crate, to limit the number of
+// type that can implement `Node`.
 /// Every type of node in a tree implements this trait.
 #[allow(private_bounds)]
 pub trait Node<const PARTIAL_LEN: usize>: Sealed {
@@ -107,7 +109,6 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
 
     /// Reads the full prefix of this node, and searches a descendant leaf node to find implicit
     /// bytes if necessary.
-    #[allow(clippy::type_complexity)]
     fn read_full_prefix(
         &self,
         current_depth: usize,
@@ -135,7 +136,6 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
     ///
     /// The full prefix for this node will be read, even if a descendant leaf node needs to be
     /// searched to find implicit bytes.
-    #[inline]
     fn match_full_prefix(
         &self,
         key: SearchKey<'_>,
@@ -161,7 +161,6 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
         Ok(prefix_len)
     }
 
-    #[inline]
     fn match_partial_prefix(&self, key: SearchKey<'_>) -> Result<PrefixMatch, PrefixMismatch> {
         let matched = if self.header().path.prefix_len() > PARTIAL_LEN {
             let prefix_len = self.match_optimistic(key)?;
@@ -173,7 +172,6 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
         Ok(matched)
     }
 
-    #[inline]
     fn match_optimistic(&self, key: SearchKey<'_>) -> Result<usize, PrefixMismatch> {
         let key_len = key.len();
         let prefix_len = self.header().path.prefix_len();
@@ -186,7 +184,6 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
         Ok(prefix_len)
     }
 
-    #[inline]
     fn match_pessimistic(&self, key: SearchKey<'_>) -> Result<usize, PrefixMismatch> {
         let prefix = SearchKey::new(self.header().path.as_ref());
         let prefix_len = prefix.common_prefix_len(key);

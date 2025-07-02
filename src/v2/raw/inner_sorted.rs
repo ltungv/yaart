@@ -169,21 +169,18 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for InnerSorted<K, V, PA
 impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
     InnerSorted<K, V, PARTIAL_LEN, NUM_CHILDREN>
 {
-    #[inline]
     fn keys(&self) -> &[u8] {
         let keys = &self.keys[..self.header.children as usize];
         let base_ptr = keys.as_ptr().cast::<u8>();
         unsafe { std::slice::from_raw_parts(base_ptr, keys.len()) }
     }
 
-    #[inline]
     fn ptrs(&self) -> &[OpaqueNodePtr<K, V, PARTIAL_LEN>] {
         let ptrs = &self.ptrs[..self.header.children as usize];
         let base_ptr = ptrs.as_ptr().cast::<OpaqueNodePtr<K, V, PARTIAL_LEN>>();
         unsafe { std::slice::from_raw_parts(base_ptr, ptrs.len()) }
     }
 
-    #[inline]
     fn search(&self, key_partial: u8) -> SearchResult {
         let keys = self.keys();
         if NUM_CHILDREN < 16 {
@@ -211,12 +208,10 @@ impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
         }
     }
 
-    #[inline]
     const fn header(&self) -> &Header<PARTIAL_LEN> {
         &self.header
     }
 
-    #[inline]
     fn add(&mut self, key_partial: u8, child_ptr: OpaqueNodePtr<K, V, PARTIAL_LEN>) {
         let pos = match self.search(key_partial) {
             SearchResult::Found(pos) => pos,
@@ -236,7 +231,6 @@ impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
         self.ptrs[pos].write(child_ptr);
     }
 
-    #[inline]
     fn del(&mut self, key_partial: u8) -> Option<OpaqueNodePtr<K, V, PARTIAL_LEN>> {
         let SearchResult::Found(pos) = self.search(key_partial) else {
             return None;
@@ -249,7 +243,6 @@ impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
         Some(child)
     }
 
-    #[inline]
     fn get(&self, key_partial: u8) -> Option<OpaqueNodePtr<K, V, PARTIAL_LEN>> {
         let SearchResult::Found(pos) = self.search(key_partial) else {
             return None;
@@ -257,7 +250,6 @@ impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
         Some(self.ptrs()[pos])
     }
 
-    #[inline]
     fn min(&self) -> (u8, OpaqueNodePtr<K, V, PARTIAL_LEN>) {
         assert_ne!(self.header.children, 0, "node is empty");
         let keys = self.keys();
@@ -265,7 +257,6 @@ impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
         (keys[0], ptrs[0])
     }
 
-    #[inline]
     fn max(&self) -> (u8, OpaqueNodePtr<K, V, PARTIAL_LEN>) {
         assert_ne!(self.header.children, 0, "node is empty");
         let n = self.header.children as usize - 1;
