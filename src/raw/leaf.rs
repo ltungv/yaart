@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{v2::Sealed, BytesRepr};
+use crate::{BytesRepr, Sealed};
 
 use super::{Node, NodeType};
 

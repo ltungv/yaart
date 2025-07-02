@@ -6,7 +6,7 @@ use std::{
     ptr::NonNull,
 };
 
-use crate::v2::tagged_ptr::TaggedPtr;
+use crate::tagged_ptr::TaggedPtr;
 
 use super::{Header, Inner, Inner256, Inner48, InnerSorted, Leaf, Node, NodeType};
 
@@ -456,7 +456,7 @@ impl<T> NodePtr<T> {
 pub mod tests {
     use std::collections::HashSet;
 
-    use crate::v2::raw::Node;
+    use crate::raw::Node;
 
     use super::{NodePtr, OpaqueNodePtr};
 

@@ -1,4 +1,4 @@
-use crate::v2::compressed_path::CompressedPath;
+use crate::compressed_path::CompressedPath;
 
 #[derive(Debug, Clone)]
 #[repr(C)]

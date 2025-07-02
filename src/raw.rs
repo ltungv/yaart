@@ -5,7 +5,7 @@ mod inner_sorted;
 mod leaf;
 mod ptr;
 
-use crate::v2::Sealed;
+use crate::Sealed;
 
 pub use header::*;
 pub use inner256::*;
@@ -15,8 +15,8 @@ pub use leaf::*;
 pub use ptr::*;
 
 use super::{
-    key::BytesRepr,
     ops::{FullPrefixMismatch, PrefixMatch, PrefixMismatch, Search},
+    repr::BytesRepr,
     search_key::SearchKey,
 };
 
@@ -119,7 +119,7 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
         let header = self.header();
         if header.path.prefix_len() <= PARTIAL_LEN {
             // The remaining prefix is contained within the compressed path.
-            (SearchKey::new(header.path.as_ref()), None)
+            (SearchKey::new(header.path.as_partial_prefix()), None)
         } else {
             // Find the minimum leaf which is guaranteed to have the full prefix of this node.
             let leaf_ptr = unsafe { Search::minimum(self.min().1) };
@@ -161,6 +161,12 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
         Ok(prefix_len)
     }
 
+    /// Attemps to match pessimistically when the partial prefix is contained within this node.
+    /// Otherwise, matches optimistically.
+    ///
+    /// In the case of an error, the caller can determine which match strategy was used based on
+    /// the [`mismatched`] field in [`PrefixMismatch`]. When it's [`None`], optimistic match was
+    /// used, otherwise, optimistic match was used.
     fn match_partial_prefix(&self, key: SearchKey<'_>) -> Result<PrefixMatch, PrefixMismatch> {
         let matched = if self.header().path.prefix_len() > PARTIAL_LEN {
             let prefix_len = self.match_optimistic(key)?;
@@ -172,6 +178,10 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
         Ok(matched)
     }
 
+    /// Compares the given key's length and this node's length to find for a mismatch. In this
+    /// case, a mismatch just means the key at the current depth is not long enough to match with
+    /// the prefix. Once we arrive at a leaf, a full comparison must be made between the leaf's key
+    /// and the given key.
     fn match_optimistic(&self, key: SearchKey<'_>) -> Result<usize, PrefixMismatch> {
         let key_len = key.len();
         let prefix_len = self.header().path.prefix_len();
@@ -184,13 +194,16 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
         Ok(prefix_len)
     }
 
+    /// Fully compares the given key and this node's partial prefix to find for a mismatch. If we
+    /// reach a leaf using only pessimistic matches, the leaf can be returned immediately without
+    /// any further check.
     fn match_pessimistic(&self, key: SearchKey<'_>) -> Result<usize, PrefixMismatch> {
-        let prefix = SearchKey::new(self.header().path.as_ref());
-        let prefix_len = prefix.common_prefix_len(key);
+        let partial_prefix = SearchKey::new(self.header().path.as_partial_prefix());
+        let prefix_len = partial_prefix.common_prefix_len(key);
         if prefix_len < self.header().path.prefix_len() {
             return Err(PrefixMismatch {
                 prefix_len,
-                mismatched: Some(prefix[prefix_len]),
+                mismatched: Some(partial_prefix[prefix_len]),
             });
         }
         Ok(prefix_len)
@@ -199,7 +212,7 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
 
 #[cfg(test)]
 mod tests {
-    use crate::v2::{
+    use crate::{
         compressed_path::CompressedPath,
         raw::{ptr::tests::NodePtrGuard, Inner256, Inner48},
         search_key::SearchKey,

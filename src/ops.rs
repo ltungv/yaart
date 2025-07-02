@@ -1,13 +1,13 @@
-mod dealloc;
+mod ptr;
 mod fmt;
 mod insert;
 mod search;
 
-use crate::v2::raw::NodePtr;
+use crate::raw::NodePtr;
 
 use super::raw::{ConcreteInnerNodePtr, Leaf};
 
-pub use dealloc::*;
+pub use ptr::*;
 pub use fmt::*;
 pub use insert::*;
 pub use search::*;

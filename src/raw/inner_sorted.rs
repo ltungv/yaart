@@ -1,6 +1,6 @@
 use std::mem::MaybeUninit;
 
-use crate::v2::{raw::RestrictedIndex, Sealed};
+use crate::{raw::RestrictedIndex, Sealed};
 
 use super::{Header, Inner, Inner48, Node, NodeType, OpaqueNodePtr};
 

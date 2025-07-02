@@ -1,99 +1,115 @@
-/// A wrapper around a byte array/vector proving methods for working with [`crate::ART`].
+use std::ops::{Deref, Index};
+
+/// A slice of bytes used during tree searches and traversals.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct SearchKey<K> {
-    elems: K,
+pub struct SearchKey<'a> {
+    elems: &'a [u8],
 }
 
-impl<K, T> AsRef<T> for SearchKey<K>
-where
-    K: AsRef<T>,
-    T: ?Sized,
-{
-    fn as_ref(&self) -> &T {
-        self.elems.as_ref()
+impl<'a> From<&'a [u8]> for SearchKey<'a> {
+    fn from(elems: &'a [u8]) -> Self {
+        Self::new(elems)
     }
 }
 
-impl<K> IntoIterator for SearchKey<K>
-where
-    K: IntoIterator,
-{
-    type Item = K::Item;
+impl Deref for SearchKey<'_> {
+    type Target = [u8];
 
-    type IntoIter = K::IntoIter;
+    fn deref(&self) -> &Self::Target {
+        self.elems
+    }
+}
+
+impl Index<usize> for SearchKey<'_> {
+    type Output = u8;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        self.elems.get(index).unwrap_or(&0)
+    }
+}
+
+impl<'a> IntoIterator for SearchKey<'a> {
+    type Item = &'a u8;
+
+    type IntoIter = <&'a [u8] as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.elems.into_iter()
+        self.elems.iter()
     }
 }
 
-impl<K> SearchKey<K> {
-    /// Returns a new [`SearchKey`] containing some arbitrary elements.
-    pub const fn new(elems: K) -> Self {
+impl<'a> SearchKey<'a> {
+    /// Returns a new [`SearchKey`] over the given slice of bytes.
+    #[must_use]
+    pub const fn new(elems: &'a [u8]) -> Self {
         Self { elems }
     }
 
-    /// Returns a new [`SearchKey`] refencing the elements of this
-    /// [`SearchKey`].
-    pub fn into_ref<T>(&self) -> SearchKey<&T>
-    where
-        K: AsRef<T>,
-        T: ?Sized,
-    {
+    /// Returns a new search key whose slice starts from the given index.
+    #[must_use]
+    pub fn shift(self, index: usize) -> Self {
         SearchKey {
-            elems: self.elems.as_ref(),
+            elems: &self.elems[index..],
         }
     }
 
-    /// Returns whether the [`SearchKey`] is empty.
-    pub fn is_empty<T>(&self) -> bool
-    where
-        K: AsRef<[T]>,
-    {
-        self.elems.as_ref().is_empty()
-    }
-
-    /// Returns the number of elements in the current [`SearchKey`].
-    pub fn len<T>(&self) -> usize
-    where
-        K: AsRef<[T]>,
-    {
-        self.elems.as_ref().len()
-    }
-
-    /// Returns the element at the given position or a default value if the
-    /// index is out-of-bounds.
-    pub fn get<T>(&self, index: usize) -> T
-    where
-        K: AsRef<[T]>,
-        T: Copy + Default,
-    {
-        self.elems.as_ref().get(index).copied().unwrap_or_default()
-    }
-
-    /// Returns a new [`SearchKey`] containing only the elements starting from
-    /// the given index.
-    pub fn from<T>(&self, index: usize) -> SearchKey<&[T]>
-    where
-        K: AsRef<[T]>,
-    {
+    /// Returns a new search key whose slice starts from the given index and has the given length.
+    #[must_use]
+    pub fn range(self, index: usize, len: usize) -> Self {
         SearchKey {
-            elems: &self.elems.as_ref()[index..],
+            elems: &self.elems[index..index + len],
         }
     }
 
-    /// Returns a number of common elements between the prefix of the two given
-    /// search keys.
-    pub fn common_prefix_len<Q, T>(&self, other: &SearchKey<Q>, depth: usize) -> usize
-    where
-        K: AsRef<[T]>,
-        Q: AsRef<[T]>,
-        T: Eq,
-    {
-        self.from(depth)
-            .into_iter()
-            .zip(other.from(depth))
+    /// Returns the length of the common prefix between two [`SearchKey`]s.
+    #[must_use]
+    pub fn common_prefix_len(self, other: SearchKey<'_>) -> usize {
+        self.into_iter()
+            .zip(other)
             .take_while(|(x, y)| x == y)
             .count()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SearchKey;
+
+    #[test]
+    fn basic_properties() {
+        let k = SearchKey::new(b"");
+        assert!(k.is_empty());
+        assert_eq!(k.len(), 0);
+        assert_eq!(&*k, b"".as_slice());
+
+        let k = SearchKey::new(b"abc");
+        assert!(!k.is_empty());
+        assert_eq!(k.len(), 3);
+        assert_eq!(&*k, b"abc".as_slice());
+    }
+
+    #[test]
+    fn shift() {
+        let k1 = SearchKey::new(b"abcdef");
+        let k2 = k1.shift(3);
+        assert!(!k2.is_empty());
+        assert_eq!(k2.len(), 3);
+        assert_eq!(&*k2, b"def".as_slice());
+    }
+
+    #[test]
+    fn range() {
+        let k1 = SearchKey::new(b"abcdef");
+        let k2 = k1.range(1, 4);
+        assert!(!k2.is_empty());
+        assert_eq!(k2.len(), 4);
+        assert_eq!(&*k2, b"bcde".as_slice());
+    }
+
+    #[test]
+    fn common_prefix_len() {
+        let k1 = SearchKey::new(b"abcdef");
+        let k2 = SearchKey::new(b"abcabc");
+        assert_eq!(k1.common_prefix_len(k2), 3);
     }
 }

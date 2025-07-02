@@ -1,10 +1,8 @@
 use std::marker::PhantomData;
 
 use crate::{
-    v2::{
-        raw::{ConcreteNodePtr, Inner, Leaf, NodePtr, OpaqueNodePtr},
-        search_key::SearchKey,
-    },
+    raw::{ConcreteNodePtr, Inner, Leaf, NodePtr, OpaqueNodePtr},
+    search_key::SearchKey,
     BytesRepr,
 };
 
@@ -140,7 +138,7 @@ impl<K, V, const PARTIAL_LEN: usize> Search<K, V, PARTIAL_LEN> {
 
 #[cfg(test)]
 mod tests {
-    use crate::v2::{
+    use crate::{
         compressed_path::CompressedPath,
         raw::{Header, Inner, Inner256, Inner48, InnerSorted, Leaf, NodePtrGuard},
     };

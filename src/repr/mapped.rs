@@ -4,7 +4,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use crate::v2::search_key::SearchKey;
+use crate::search_key::SearchKey;
 
 use super::{BytesMapping, BytesRepr};
 

@@ -1,12 +1,12 @@
 use std::{marker::PhantomData, ops::ControlFlow};
 
-use crate::v2::{
+use crate::{
     compressed_path::CompressedPath,
-    key::BytesRepr,
     raw::{
         ConcreteInnerNodePtr, ConcreteNodePtr, Header, Inner, InnerSorted, Leaf, NodePtr,
         OpaqueNodePtr,
     },
+    repr::BytesRepr,
     search_key::SearchKey,
 };
 
@@ -125,7 +125,7 @@ impl<K, V, const PARTIAL_LEN: usize> Insert<K, V, PARTIAL_LEN> {
                 let mut inner4 = {
                     let header = unsafe { inner_ptr.header() };
                     InnerSorted::<K, V, PARTIAL_LEN, 4>::from(Header::from(CompressedPath::new(
-                        header.path.as_ref(),
+                        header.path.as_partial_prefix(),
                         mismatch.prefix_len,
                     )))
                 };
@@ -326,7 +326,7 @@ impl<K, V, const PARTIAL_LEN: usize> Insert<K, V, PARTIAL_LEN> {
 
 #[cfg(test)]
 mod tests {
-    use crate::v2::{
+    use crate::{
         compressed_path::CompressedPath,
         raw::{Header, Inner, Inner256, Inner48, InnerSorted, Leaf, NodePtrGuard},
         search_key::SearchKey,

@@ -1,6 +1,6 @@
 use std::{cmp, error, fmt, mem::MaybeUninit};
 
-use crate::v2::Sealed;
+use crate::Sealed;
 
 use super::{Header, Inner, Inner256, InnerSorted, Node, NodeType, OpaqueNodePtr};
 

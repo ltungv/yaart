@@ -1,7 +1,7 @@
 use std::{fmt, marker::PhantomData};
 
 use crate::{
-    v2::raw::{ConcreteNodePtr, Inner, NodePtr, OpaqueNodePtr},
+    raw::{ConcreteNodePtr, Inner, NodePtr, OpaqueNodePtr},
     BytesRepr,
 };
 

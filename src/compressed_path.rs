@@ -1,6 +1,6 @@
-use std::ops::Index;
+use std::ops::{Deref, Index};
 
-use crate::SearchKey;
+use super::search_key::SearchKey;
 
 /// A compressed path holds the length of the common prefix and a partial preifx consists of the
 /// first `PARTIAL_LEN` bytes of the common prefix.
@@ -42,17 +42,19 @@ impl<const PARTIAL_LEN: usize> Default for CompressedPath<PARTIAL_LEN> {
     }
 }
 
+impl<const PARTIAL_LEN: usize> Deref for CompressedPath<PARTIAL_LEN> {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        self.as_partial_prefix()
+    }
+}
+
 impl<const PARTIAL_LEN: usize> Index<usize> for CompressedPath<PARTIAL_LEN> {
     type Output = u8;
 
     fn index(&self, index: usize) -> &Self::Output {
         self.partial.get(index).unwrap_or(&0)
-    }
-}
-
-impl<const PARTIAL_LEN: usize> AsRef<[u8]> for CompressedPath<PARTIAL_LEN> {
-    fn as_ref(&self) -> &[u8] {
-        &self.partial[..self.partial_len()]
     }
 }
 
@@ -64,7 +66,7 @@ impl<const PARTIAL_LEN: usize> CompressedPath<PARTIAL_LEN> {
             prefix_len,
             partial: [0; PARTIAL_LEN],
         };
-        let partial_len = path.partial_len();
+        let partial_len = path.partial_prefix_len();
         path.partial[..partial_len].copy_from_slice(&key[..partial_len]);
         path
     }
@@ -73,80 +75,27 @@ impl<const PARTIAL_LEN: usize> CompressedPath<PARTIAL_LEN> {
         self.prefix_len
     }
 
-    pub const fn partial_len(&self) -> usize {
-        if self.prefix_len() > PARTIAL_LEN {
-            PARTIAL_LEN
-        } else {
+    pub const fn partial_prefix_len(&self) -> usize {
+        if self.prefix_len < PARTIAL_LEN {
             self.prefix_len
+        } else {
+            PARTIAL_LEN
         }
     }
 
-    /// Returns the position in which this compressed path and the given key differ.
-    pub fn mismatch(&self, key: SearchKey<&[u8]>) -> Option<usize> {
-        self.as_ref().iter().zip(key).position(|(x, y)| x != y)
-    }
-
-    /// Pushes a single byte into the partial key. If the data array is full, then the byte will
-    /// not be written into it. In that case, only the length will be incremented.
-    pub const fn push(&mut self, char: u8) {
-        if self.prefix_len < PARTIAL_LEN {
-            self.partial[self.prefix_len] = char;
-        }
-        self.prefix_len += 1;
-    }
-
-    /// Appends the data from another partial key into this one. We only copy enough bytes to fill
-    /// the data array. The length will be incremented by the length of the other partial key.
-    pub fn append(&mut self, other: &Self) {
-        if self.prefix_len < PARTIAL_LEN {
-            let len = other.prefix_len.min(PARTIAL_LEN - self.prefix_len);
-            self.partial[self.prefix_len..self.prefix_len + len]
-                .copy_from_slice(&other.partial[..len]);
-        }
-        self.prefix_len += other.prefix_len;
+    pub fn as_partial_prefix(&self) -> &[u8] {
+        &self.partial[..self.partial_prefix_len()]
     }
 
     pub fn shift(&mut self, shift: usize) {
         self.prefix_len -= shift;
-        self.partial.copy_within(shift.., 0);
+        let partial_len = self.partial_prefix_len();
+        self.partial.copy_within(shift..shift + partial_len, 0);
     }
 
-    pub fn shift_with(&mut self, shift: usize, key: SearchKey<&[u8]>) {
+    pub fn shift_with(&mut self, shift: usize, key: SearchKey<'_>) {
         self.prefix_len -= shift;
-        let partial_len = self.partial_len();
-        self.partial[..partial_len].copy_from_slice(&key.as_ref()[..partial_len]);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::SearchKey;
-
-    use super::CompressedPath;
-
-    const TEST_KEY: &[u8] = b"abcdefghijklmnopqrstuvwxyz";
-
-    #[test]
-    fn create_compressed_path() {
-        let path = CompressedPath::<8>::new(TEST_KEY, 16);
-        assert_eq!(path.prefix_len(), 16);
-        assert_eq!(path.partial_len(), 8);
-        assert_eq!(path.as_ref(), &TEST_KEY[..8]);
-        for i in 0..8 {
-            assert_eq!(path[i], TEST_KEY[i]);
-        }
-    }
-
-    #[test]
-    fn compressed_path_mismatch() {
-        let path = CompressedPath::<8>::new(TEST_KEY, 16);
-        path.mismatch(SearchKey::new(b"123"));
-
-        assert_eq!(path.prefix_len(), 16);
-        assert_eq!(path.partial_len(), 8);
-        assert_eq!(path.as_ref(), &TEST_KEY[..8]);
-        for i in 0..8 {
-            assert_eq!(path[i], TEST_KEY[i]);
-        }
+        let partial_len = self.partial_prefix_len();
+        self.partial[..partial_len].copy_from_slice(&key.range(0, partial_len));
     }
 }

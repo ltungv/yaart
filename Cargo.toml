@@ -19,5 +19,5 @@ rand = "0.9.1"
 criterion = "0.6.0"
 
 [[bench]]
-name = "compare"
+name = "criterion"
 harness = false

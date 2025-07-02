@@ -1,11 +1,11 @@
 use std::marker::PhantomData;
 
-use crate::v2::raw::{ConcreteNodePtr, Inner, NodePtr, OpaqueNodePtr};
+use crate::raw::{ConcreteNodePtr, Inner, NodePtr, OpaqueNodePtr};
 
-pub struct Dealloc<K, V, const PARTIAL_LEN: usize>(PhantomData<(K, V)>);
+pub struct Ptr<K, V, const PARTIAL_LEN: usize>(PhantomData<(K, V)>);
 
-impl<K, V, const PARTIAL_LEN: usize> Dealloc<K, V, PARTIAL_LEN> {
-    pub unsafe fn tree(root: OpaqueNodePtr<K, V, PARTIAL_LEN>) {
+impl<K, V, const PARTIAL_LEN: usize> Ptr<K, V, PARTIAL_LEN> {
+    pub unsafe fn dealloc(root: OpaqueNodePtr<K, V, PARTIAL_LEN>) {
         fn visit<T, const PARTIAL_LEN: usize>(
             stack: &mut Vec<OpaqueNodePtr<T::Key, T::Value, PARTIAL_LEN>>,
             node_ptr: NodePtr<T>,
