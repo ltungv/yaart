@@ -1,65 +1,66 @@
-use std::{collections::BTreeMap, ops::Range};
+use std::{
+    collections::BTreeMap,
+    fs::File,
+    io::{BufRead, BufReader},
+    ops::Range,
+    time::Instant,
+};
 
 use rand::{
     distr::{Alphanumeric, Distribution, StandardUniform},
     seq::SliceRandom,
     Rng, SeedableRng,
 };
-use yaart::ART;
-
-fn get_samples<T>(
-    seed: u64,
-    prefix_count: usize,
-    prefix_sizes: Range<usize>,
-    suffix_count: usize,
-    suffix_size: usize,
-) -> Vec<(String, T)>
-where
-    StandardUniform: Distribution<T> + Distribution<u64>,
-{
-    let random_string = |seed: u64, size: usize| {
-        rand::rngs::StdRng::seed_from_u64(seed)
-            .sample_iter(Alphanumeric)
-            .map(char::from)
-            .take(size)
-            .collect::<String>()
-    };
-    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-    let mut keys = Vec::new();
-    for prefix_size in prefix_sizes {
-        let mut prefixes = Vec::default();
-        for _ in 0..prefix_count {
-            prefixes.push(random_string(rng.random(), prefix_size));
-        }
-        for suffix_index in 0..suffix_count {
-            let mut key = String::new();
-            for prefix in prefixes.iter().take(suffix_index % prefix_count) {
-                key.push_str(prefix);
-            }
-            key.push_str(&random_string(rng.random(), suffix_size));
-            keys.push((key, rng.random()));
-        }
-    }
-    keys.shuffle(&mut rng);
-    keys
-}
+use yaart::RadixTreeMap;
 
 fn main() {
-    let samples = get_samples::<u32>(rand::random(), 256, 2..18, 1024, 8);
+    let path = std::env::args().nth(1).unwrap();
+    let file = File::open(path).unwrap();
+    let reader = BufReader::new(file);
 
-    for _ in 0..100 {
-        let mut radix = ART::<_, _, 10>::default();
-        let mut btree = BTreeMap::new();
-
-        for (k, v) in &samples {
-            radix.insert(k.clone(), *v);
-            btree.insert(k.clone(), *v);
+    let mut words = Vec::new();
+    for line in reader.lines() {
+        let Ok(line) = line else {
+            continue;
+        };
+        for word in line.split_whitespace() {
+            words.push(word.to_string())
         }
+    }
 
-        assert_eq!(radix.min(), btree.first_key_value());
-        assert_eq!(radix.max(), btree.last_key_value());
-        for (k, v) in &btree {
-            assert_eq!(radix.search(k), Some(v));
+    let mut m = RadixTreeMap::<String, usize, 4>::new();
+    {
+        let start = Instant::now();
+        assert!(m.is_empty());
+        for (i, w) in words.clone().into_iter().enumerate() {
+            assert!(m.insert(w, i).is_none());
         }
+        println!("INSERT (ART) {:?}", start.elapsed());
+    };
+    {
+        let start = Instant::now();
+        assert_eq!(m.len(), words.len());
+        for (i, w) in words.iter().enumerate() {
+            assert_eq!(m.get(w), Some(&i));
+        }
+        println!("LOOKUP (ART) {:?}", start.elapsed());
+    }
+
+    let mut b = BTreeMap::new();
+    {
+        let start = Instant::now();
+        assert!(b.is_empty());
+        for (i, w) in words.clone().into_iter().enumerate() {
+            assert!(b.insert(w, i).is_none());
+        }
+        println!("INSERT (BTREE) {:?}", start.elapsed());
+    };
+    {
+        let start = Instant::now();
+        assert_eq!(b.len(), words.len());
+        for (i, w) in words.iter().enumerate() {
+            assert_eq!(b.get(w), Some(&i));
+        }
+        println!("LOOKUP (BTREE) {:?}", start.elapsed());
     }
 }

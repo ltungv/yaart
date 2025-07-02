@@ -52,7 +52,7 @@ impl<const PARTIAL_LEN: usize> Index<usize> for CompressedPath<PARTIAL_LEN> {
 
 impl<const PARTIAL_LEN: usize> AsRef<[u8]> for CompressedPath<PARTIAL_LEN> {
     fn as_ref(&self) -> &[u8] {
-        &self.partial[..self.prefix_len.min(PARTIAL_LEN)]
+        &self.partial[..self.partial_len()]
     }
 }
 
@@ -64,7 +64,7 @@ impl<const PARTIAL_LEN: usize> CompressedPath<PARTIAL_LEN> {
             prefix_len,
             partial: [0; PARTIAL_LEN],
         };
-        let partial_len = prefix_len.min(PARTIAL_LEN);
+        let partial_len = path.partial_len();
         path.partial[..partial_len].copy_from_slice(&key[..partial_len]);
         path
     }
@@ -73,14 +73,23 @@ impl<const PARTIAL_LEN: usize> CompressedPath<PARTIAL_LEN> {
         self.prefix_len
     }
 
+    pub const fn partial_len(&self) -> usize {
+        if self.prefix_len < PARTIAL_LEN {
+            self.prefix_len
+        } else {
+            PARTIAL_LEN
+        }
+    }
+
     pub fn shift(&mut self, shift: usize) {
         self.prefix_len -= shift;
-        self.partial.copy_within(shift.., 0);
+        let partial_len = self.partial_len();
+        self.partial.copy_within(shift..shift + partial_len, 0);
     }
 
     pub fn shift_with(&mut self, shift: usize, key: SearchKey<'_>) {
         self.prefix_len -= shift;
-        let partial_len = self.prefix_len.min(PARTIAL_LEN);
+        let partial_len = self.partial_len();
         self.partial[..partial_len].copy_from_slice(&key.range(0, partial_len));
     }
 }

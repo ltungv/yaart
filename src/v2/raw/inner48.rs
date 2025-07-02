@@ -4,6 +4,7 @@ use crate::v2::Sealed;
 
 use super::{Header, Inner, Inner256, InnerSorted, Node, NodeType, OpaqueNodePtr};
 
+#[derive(Debug)]
 #[repr(C)]
 pub struct Inner48<K, V, const PARTIAL_LEN: usize> {
     pub(crate) header: Header<PARTIAL_LEN>,
@@ -23,6 +24,20 @@ impl<K, V, const PARTIAL_LEN: usize> From<Header<PARTIAL_LEN>> for Inner48<K, V,
     }
 }
 
+impl<'a, K, V, const PARTIAL_LEN: usize> IntoIterator for &'a Inner48<K, V, PARTIAL_LEN> {
+    type Item = (u8, OpaqueNodePtr<K, V, PARTIAL_LEN>);
+
+    type IntoIter = Inner48Iter<'a, K, V, PARTIAL_LEN>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Self::IntoIter {
+            offset: 0,
+            length: self.header.children as usize,
+            inner: self,
+        }
+    }
+}
+
 impl<K, V, const PARTIAL_LEN: usize> Node<PARTIAL_LEN> for Inner48<K, V, PARTIAL_LEN> {
     const TYPE: NodeType = NodeType::Inner48;
     type Key = K;
@@ -34,15 +49,20 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for Inner48<K, V, PARTIA
 
     type ShrunkNode = InnerSorted<K, V, PARTIAL_LEN, 16>;
 
+    type Iter<'a>
+        = Inner48Iter<'a, K, V, PARTIAL_LEN>
+    where
+        Self: 'a;
+
     fn grow(&self) -> Self::GrownNode {
         let mut grown = Self::GrownNode::from(self.header.clone());
-        for key in u8::MIN..=u8::MAX {
-            let child_index = self.keys[key as usize];
+        for key in 0..256 {
+            let child_index = self.keys[key];
             if child_index.is_empty() {
                 continue;
             }
             let child = unsafe { self.ptrs[usize::from(child_index)].assume_init_read() };
-            grown.ptrs[key as usize] = Some(child);
+            grown.ptrs[key] = Some(child);
         }
         grown
     }
@@ -63,15 +83,15 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for Inner48<K, V, PARTIA
         shrunk
     }
 
+    fn iter(&self) -> Self::Iter<'_> {
+        self.into_iter()
+    }
+
     fn header(&self) -> &Header<PARTIAL_LEN> {
         &self.header
     }
 
-    fn add(
-        &mut self,
-        partial_key: u8,
-        child_ptr: OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>,
-    ) {
+    fn add(&mut self, partial_key: u8, child_ptr: OpaqueNodePtr<K, V, PARTIAL_LEN>) {
         let partial_key_index = partial_key as usize;
         let child_index = self.keys[partial_key_index];
         if child_index.is_empty() {
@@ -85,10 +105,7 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for Inner48<K, V, PARTIA
         }
     }
 
-    fn del(
-        &mut self,
-        partial_key: u8,
-    ) -> Option<OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>> {
+    fn del(&mut self, partial_key: u8) -> Option<OpaqueNodePtr<K, V, PARTIAL_LEN>> {
         let partial_key_index = partial_key as usize;
         let child_index = self.keys[partial_key_index];
         if child_index.is_empty() {
@@ -100,7 +117,7 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for Inner48<K, V, PARTIA
         }
     }
 
-    fn get(&self, partial_key: u8) -> Option<OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>> {
+    fn get(&self, partial_key: u8) -> Option<OpaqueNodePtr<K, V, PARTIAL_LEN>> {
         let partial_key_index = partial_key as usize;
         let child_index = self.keys[partial_key_index];
         if child_index.is_empty() {
@@ -110,7 +127,7 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for Inner48<K, V, PARTIA
         }
     }
 
-    fn min(&self) -> (u8, OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>) {
+    fn min(&self) -> (u8, OpaqueNodePtr<K, V, PARTIAL_LEN>) {
         for key in u8::MIN..=u8::MAX {
             let child_index = self.keys[key as usize];
             if !child_index.is_empty() {
@@ -121,7 +138,7 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for Inner48<K, V, PARTIA
         unreachable!("node is empty")
     }
 
-    fn max(&self) -> (u8, OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>) {
+    fn max(&self) -> (u8, OpaqueNodePtr<K, V, PARTIAL_LEN>) {
         for key in (u8::MIN..=u8::MAX).rev() {
             let child_index = self.keys[key as usize];
             if !child_index.is_empty() {
@@ -130,6 +147,64 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for Inner48<K, V, PARTIA
             }
         }
         unreachable!("node is empty")
+    }
+}
+
+#[derive(Debug)]
+pub struct Inner48Iter<'a, K, V, const PARTIAL_LEN: usize> {
+    offset: usize,
+    length: usize,
+    inner: &'a Inner48<K, V, PARTIAL_LEN>,
+}
+
+impl<K, V, const PARTIAL_LEN: usize> ExactSizeIterator for Inner48Iter<'_, K, V, PARTIAL_LEN> {
+    fn len(&self) -> usize {
+        self.length
+    }
+}
+
+impl<K, V, const PARTIAL_LEN: usize> DoubleEndedIterator for Inner48Iter<'_, K, V, PARTIAL_LEN> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.length == 0 {
+            return None;
+        }
+        while self.length > 0 {
+            let key = self.offset + self.length - 1;
+            let ptr_index = self.inner.keys[key];
+            self.length -= 1;
+            if !ptr_index.is_empty() {
+                let key = u8::try_from(key).expect("partial key must be an u8");
+                let ptr = unsafe { self.inner.ptrs[usize::from(ptr_index)].assume_init_read() };
+                return Some((key, ptr));
+            }
+        }
+        None
+    }
+}
+
+impl<K, V, const PARTIAL_LEN: usize> Iterator for Inner48Iter<'_, K, V, PARTIAL_LEN> {
+    type Item = (u8, OpaqueNodePtr<K, V, PARTIAL_LEN>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.length == 0 {
+            return None;
+        }
+        while self.length > 0 {
+            let key = self.offset;
+            let ptr_index = self.inner.keys[key];
+            self.offset += 1;
+            self.length -= 1;
+            if !ptr_index.is_empty() {
+                let key = u8::try_from(key).expect("partial key must be an u8");
+                let ptr = unsafe { self.inner.ptrs[usize::from(ptr_index)].assume_init_read() };
+                return Some((key, ptr));
+            }
+        }
+        None
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.length, Some(self.length))
     }
 }
 

@@ -20,7 +20,7 @@ pub struct Inserted<'a, K, V, const PARTIAL_LEN: usize> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum Kind<K, V, const PARTIAL_LEN: usize> {
+enum Strategy<K, V, const PARTIAL_LEN: usize> {
     OverwriteLeafValue {
         leaf: NodePtr<Leaf<K, V>>,
     },
@@ -38,22 +38,22 @@ enum Kind<K, V, const PARTIAL_LEN: usize> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Insertion<K, V, const PARTIAL_LEN: usize> {
+pub struct Insert<K, V, const PARTIAL_LEN: usize> {
     depth: usize,
     root: OpaqueNodePtr<K, V, PARTIAL_LEN>,
     grandparent: Option<Branch<K, V, PARTIAL_LEN>>,
     parent: Option<Branch<K, V, PARTIAL_LEN>>,
-    kind: Kind<K, V, PARTIAL_LEN>,
+    strategy: Strategy<K, V, PARTIAL_LEN>,
 }
 
-impl<K, V, const PARTIAL_LEN: usize> Insertion<K, V, PARTIAL_LEN> {
+impl<K, V, const PARTIAL_LEN: usize> Insert<K, V, PARTIAL_LEN> {
     #[allow(clippy::too_many_lines)]
     pub unsafe fn apply<'a>(self, key: K, value: V) -> Inserted<'a, K, V, PARTIAL_LEN>
     where
         K: BytesRepr,
     {
-        let (new_inner, leaf) = match self.kind {
-            Kind::OverwriteLeafValue { leaf: leaf_ptr } => {
+        let (new_inner, leaf) = match self.strategy {
+            Strategy::OverwriteLeafValue { leaf: leaf_ptr } => {
                 let new_leaf = Leaf::new(key, value);
                 return Inserted {
                     leaf: leaf_ptr,
@@ -62,19 +62,19 @@ impl<K, V, const PARTIAL_LEN: usize> Insertion<K, V, PARTIAL_LEN> {
                     marker: PhantomData,
                 };
             }
-            Kind::SplitAtLeaf {
+            Strategy::SplitAtLeaf {
                 leaf: old_leaf,
                 prefix_len,
             } => {
-                let new_search_key = key.repr();
-                let old_search_key = {
+                let new_key = key.repr();
+                let old_key = {
                     let leaf = unsafe { old_leaf.as_ref() };
                     leaf.key.repr()
                 };
-                let new_partial_key = new_search_key[self.depth + prefix_len];
-                let old_partial_key = old_search_key[self.depth + prefix_len];
+                let new_partial_key = new_key[self.depth + prefix_len];
+                let old_partial_key = old_key[self.depth + prefix_len];
                 let header = Header::from(CompressedPath::new(
-                    &new_search_key.range(self.depth, prefix_len),
+                    &new_key.range(self.depth, prefix_len),
                     prefix_len,
                 ));
                 let new_leaf = NodePtr::alloc(Leaf::new(key, value));
@@ -83,7 +83,7 @@ impl<K, V, const PARTIAL_LEN: usize> Insertion<K, V, PARTIAL_LEN> {
                 inner4.add(old_partial_key, old_leaf.as_opaque());
                 (NodePtr::alloc(inner4).as_opaque(), new_leaf)
             }
-            Kind::AddKeyPartialToInner { inner: inner_ptr } => {
+            Strategy::AddKeyPartialToInner { inner: inner_ptr } => {
                 fn add<T, const PARTIAL_LEN: usize>(
                     inner_ptr: NodePtr<T>,
                     partial_key: u8,
@@ -117,7 +117,7 @@ impl<K, V, const PARTIAL_LEN: usize> Insertion<K, V, PARTIAL_LEN> {
                 };
                 (new_inner, new_leaf)
             }
-            Kind::SplitAtInner {
+            Strategy::SplitAtInner {
                 inner: inner_ptr,
                 mismatch,
             } => {
@@ -139,14 +139,13 @@ impl<K, V, const PARTIAL_LEN: usize> Insertion<K, V, PARTIAL_LEN> {
                     let header = unsafe { inner_ptr.header_mut() };
                     match mismatch.leaf {
                         Some(leaf_ptr) => {
-                            let leaf_search_key = {
+                            let leaf_key = {
                                 let leaf = unsafe { leaf_ptr.as_ref() };
                                 leaf.key.repr()
                             };
-                            header.path.shift_with(
-                                shrink_len,
-                                leaf_search_key.shift(self.depth + mismatch.prefix_len),
-                            );
+                            header
+                                .path
+                                .shift_with(shrink_len, leaf_key.shift(self.depth + shrink_len));
                         }
                         None => {
                             header.path.shift(shrink_len);
@@ -190,7 +189,7 @@ impl<K, V, const PARTIAL_LEN: usize> Insertion<K, V, PARTIAL_LEN> {
     /// Searches from the root node for a point in the tree where a leaf having the given search
     /// key can be inserted.
     #[allow(clippy::too_many_lines)]
-    pub unsafe fn prepare(root: OpaqueNodePtr<K, V, PARTIAL_LEN>, search_key: SearchKey<'_>) -> Self
+    pub unsafe fn prepare(root: OpaqueNodePtr<K, V, PARTIAL_LEN>, key: SearchKey<'_>) -> Self
     where
         K: BytesRepr,
     {
@@ -199,7 +198,7 @@ impl<K, V, const PARTIAL_LEN: usize> Insertion<K, V, PARTIAL_LEN> {
         fn descend<T, K, V, const PARTIAL_LEN: usize>(
             current_depth: &mut usize,
             node_ptr: NodePtr<T>,
-            search_key: SearchKey<'_>,
+            key: SearchKey<'_>,
         ) -> ControlFlow<
             FullPrefixMismatch<K, V, PARTIAL_LEN>,
             Option<OpaqueNodePtr<K, V, PARTIAL_LEN>>,
@@ -212,11 +211,11 @@ impl<K, V, const PARTIAL_LEN: usize> Insertion<K, V, PARTIAL_LEN> {
             // While inserting, we want to abort immediately when encountering a prefix mismatch.
             // Therefore, we immediately match the search key at the current depth with the full prefix
             // instead of traversing down the tree optimistically.
-            match node.match_full_prefix(search_key, *current_depth) {
+            match node.match_full_prefix(key, *current_depth) {
                 Err(mismatch) => ControlFlow::Break(mismatch),
                 Ok(prefix_len) => {
                     *current_depth += prefix_len;
-                    ControlFlow::Continue(node.get(search_key[*current_depth]))
+                    ControlFlow::Continue(node.get(key[*current_depth]))
                 }
             }
         }
@@ -228,26 +227,26 @@ impl<K, V, const PARTIAL_LEN: usize> Insertion<K, V, PARTIAL_LEN> {
 
         loop {
             let (current_inner, lookup_result) = match current_node.as_concrete() {
-                ConcreteNodePtr::Leaf(leaf_ptr) => {
-                    let leaf_search_key = {
-                        let leaf = unsafe { leaf_ptr.as_ref() };
+                ConcreteNodePtr::Leaf(node_ptr) => {
+                    let leaf_key = {
+                        let leaf = unsafe { node_ptr.as_ref() };
                         leaf.key.repr()
                     };
                     // Check if the key fully match an existing leaf.
-                    let kind = if leaf_search_key == search_key {
+                    let strategy = if leaf_key == key {
                         // If it fully matches, we just need to replace the leaf's value without
                         // changing the tree's structure.
-                        Kind::OverwriteLeafValue { leaf: leaf_ptr }
+                        Strategy::OverwriteLeafValue { leaf: node_ptr }
                     } else {
                         // There's a mismatch so we create a new inner node having a prefix
                         // covering everything before the mismatch. Then, we create a new leaf and
                         // add it and the existing leaf to the new inner node using their
                         // mismatched values as the partial_key.
-                        Kind::SplitAtLeaf {
-                            leaf: leaf_ptr,
-                            prefix_len: leaf_search_key
+                        Strategy::SplitAtLeaf {
+                            leaf: node_ptr,
+                            prefix_len: leaf_key
                                 .shift(current_depth)
-                                .common_prefix_len(search_key.shift(current_depth)),
+                                .common_prefix_len(key.shift(current_depth)),
                         }
                     };
                     break Self {
@@ -255,24 +254,24 @@ impl<K, V, const PARTIAL_LEN: usize> Insertion<K, V, PARTIAL_LEN> {
                         root,
                         grandparent: current_grandparent,
                         parent: current_parent,
-                        kind,
+                        strategy,
                     };
                 }
                 ConcreteNodePtr::Inner4(node_ptr) => (
                     ConcreteInnerNodePtr::from(node_ptr),
-                    descend(&mut current_depth, node_ptr, search_key),
+                    descend(&mut current_depth, node_ptr, key),
                 ),
                 ConcreteNodePtr::Inner16(node_ptr) => (
                     ConcreteInnerNodePtr::from(node_ptr),
-                    descend(&mut current_depth, node_ptr, search_key),
+                    descend(&mut current_depth, node_ptr, key),
                 ),
                 ConcreteNodePtr::Inner48(node_ptr) => (
                     ConcreteInnerNodePtr::from(node_ptr),
-                    descend(&mut current_depth, node_ptr, search_key),
+                    descend(&mut current_depth, node_ptr, key),
                 ),
                 ConcreteNodePtr::Inner256(node_ptr) => (
                     ConcreteInnerNodePtr::from(node_ptr),
-                    descend(&mut current_depth, node_ptr, search_key),
+                    descend(&mut current_depth, node_ptr, key),
                 ),
             };
 
@@ -289,7 +288,7 @@ impl<K, V, const PARTIAL_LEN: usize> Insertion<K, V, PARTIAL_LEN> {
                         root,
                         grandparent: current_grandparent,
                         parent: current_parent,
-                        kind: Kind::SplitAtInner {
+                        strategy: Strategy::SplitAtInner {
                             inner: current_inner,
                             mismatch,
                         },
@@ -306,7 +305,7 @@ impl<K, V, const PARTIAL_LEN: usize> Insertion<K, V, PARTIAL_LEN> {
                     root,
                     grandparent: current_grandparent,
                     parent: current_parent,
-                    kind: Kind::AddKeyPartialToInner {
+                    strategy: Strategy::AddKeyPartialToInner {
                         inner: current_inner,
                     },
                 };
@@ -320,7 +319,7 @@ impl<K, V, const PARTIAL_LEN: usize> Insertion<K, V, PARTIAL_LEN> {
             current_grandparent = current_parent;
             current_parent = Some(Branch {
                 ptr: current_inner,
-                key: search_key[current_depth],
+                key: key[current_depth],
             });
             current_node = next_node;
             current_depth += 1;
@@ -336,7 +335,7 @@ mod tests {
         search_key::SearchKey,
     };
 
-    use super::{Branch, FullPrefixMismatch, Insertion, Kind};
+    use super::{Branch, FullPrefixMismatch, Insert, Strategy};
 
     macro_rules! test_prepare {
         ($name:ident,$T:ty) => {
@@ -366,7 +365,7 @@ mod tests {
                 let cases = [
                     (
                         SearchKey::new(b"abc2abcdefg1xyz"),
-                        Insertion {
+                        Insert {
                             depth: 12,
                             root: root.as_opaque(),
                             grandparent: Some(Branch {
@@ -377,12 +376,12 @@ mod tests {
                                 ptr: inner2.into(),
                                 key: b'1',
                             }),
-                            kind: Kind::OverwriteLeafValue { leaf: leaf3 },
+                            strategy: Strategy::OverwriteLeafValue { leaf: leaf3 },
                         },
                     ),
                     (
                         SearchKey::new(b"abc1abcde3xyz"),
-                        Insertion {
+                        Insert {
                             depth: 9,
                             root: root.as_opaque(),
                             grandparent: None,
@@ -390,14 +389,14 @@ mod tests {
                                 ptr: root.into(),
                                 key: b'1',
                             }),
-                            kind: Kind::AddKeyPartialToInner {
+                            strategy: Strategy::AddKeyPartialToInner {
                                 inner: inner1.into(),
                             },
                         },
                     ),
                     (
                         SearchKey::new(b"abc2abcdefg3xyz"),
-                        Insertion {
+                        Insert {
                             depth: 11,
                             root: root.as_opaque(),
                             grandparent: None,
@@ -405,24 +404,24 @@ mod tests {
                                 ptr: root.into(),
                                 key: b'2',
                             }),
-                            kind: Kind::AddKeyPartialToInner {
+                            strategy: Strategy::AddKeyPartialToInner {
                                 inner: inner2.into(),
                             },
                         },
                     ),
                     (
                         SearchKey::new(b"abc3abcdefg"),
-                        Insertion {
+                        Insert {
                             depth: 3,
                             root: root.as_opaque(),
                             grandparent: None,
                             parent: None,
-                            kind: Kind::AddKeyPartialToInner { inner: root.into() },
+                            strategy: Strategy::AddKeyPartialToInner { inner: root.into() },
                         },
                     ),
                     (
                         SearchKey::new(b"abc1abcde1xy"),
-                        Insertion {
+                        Insert {
                             depth: 10,
                             root: root.as_opaque(),
                             grandparent: Some(Branch {
@@ -433,7 +432,7 @@ mod tests {
                                 ptr: inner1.into(),
                                 key: b'1',
                             }),
-                            kind: Kind::SplitAtLeaf {
+                            strategy: Strategy::SplitAtLeaf {
                                 leaf: leaf1,
                                 prefix_len: 2,
                             },
@@ -441,7 +440,7 @@ mod tests {
                     ),
                     (
                         SearchKey::new(b"abc1abcxyz"),
-                        Insertion {
+                        Insert {
                             depth: 4,
                             root: root.as_opaque(),
                             grandparent: None,
@@ -449,7 +448,7 @@ mod tests {
                                 ptr: root.into(),
                                 key: b'1',
                             }),
-                            kind: Kind::SplitAtInner {
+                            strategy: Strategy::SplitAtInner {
                                 inner: inner1.into(),
                                 mismatch: FullPrefixMismatch {
                                     prefix_len: 3,
@@ -461,7 +460,7 @@ mod tests {
                     ),
                     (
                         SearchKey::new(b"abc2abcxyz"),
-                        Insertion {
+                        Insert {
                             depth: 4,
                             root: root.as_opaque(),
                             grandparent: None,
@@ -469,7 +468,7 @@ mod tests {
                                 ptr: root.into(),
                                 key: b'2',
                             }),
-                            kind: Kind::SplitAtInner {
+                            strategy: Strategy::SplitAtInner {
                                 inner: inner2.into(),
                                 mismatch: FullPrefixMismatch {
                                     prefix_len: 3,
@@ -480,8 +479,8 @@ mod tests {
                         },
                     ),
                 ];
-                for (search_key, expected) in cases {
-                    let result = unsafe { Insertion::prepare(root.as_opaque(), search_key) };
+                for (key, expected) in cases {
+                    let result = unsafe { Insert::prepare(root.as_opaque(), key) };
                     assert_eq!(result, expected);
                 }
             }

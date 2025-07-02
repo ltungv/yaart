@@ -1,3 +1,4 @@
+mod fmt;
 mod insert;
 mod search;
 
@@ -5,6 +6,7 @@ use crate::v2::raw::NodePtr;
 
 use super::raw::{ConcreteInnerNodePtr, Leaf};
 
+pub use fmt::*;
 pub use insert::*;
 pub use search::*;
 
@@ -16,10 +18,22 @@ pub struct Branch<K, V, const PARTIAL_LEN: usize> {
     pub key: u8,
 }
 
-/// An error from matching prefixes pessimistically.
+/// An error from matching with a full prefix.
 #[derive(Debug, PartialEq, Eq)]
 pub struct FullPrefixMismatch<K, V, const PARTIAL_LEN: usize> {
     pub prefix_len: usize,
     pub mismatched: u8,
     pub leaf: Option<NodePtr<Leaf<K, V>>>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct PrefixMismatch {
+    pub prefix_len: usize,
+    pub mismatched: Option<u8>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum PrefixMatch {
+    Optimistic(usize),
+    Pessimistic(usize),
 }

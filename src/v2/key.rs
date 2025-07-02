@@ -71,6 +71,39 @@ impl_bytes_repr_for_integer!(u32);
 impl_bytes_repr_for_integer!(u64);
 impl_bytes_repr_for_integer!(u128);
 
+impl BytesRepr for str {
+    fn repr(&self) -> SearchKey<'_> {
+        self.as_bytes().into()
+    }
+}
+
+impl BytesRepr for String {
+    fn repr(&self) -> SearchKey<'_> {
+        self.as_bytes().into()
+    }
+}
+
+impl<T> BytesRepr for &T
+where
+    T: BytesRepr + ?Sized,
+{
+    fn repr(&self) -> SearchKey<'_> {
+        T::repr(*self)
+    }
+}
+
+impl OrderedBytesRepr for [u8] {}
+
+impl OrderedBytesRepr for Vec<u8> {}
+
+impl<const N: usize> OrderedBytesRepr for [u8; N] {}
+
+impl OrderedBytesRepr for str {}
+
+impl OrderedBytesRepr for String {}
+
+impl<T> OrderedBytesRepr for &T where T: OrderedBytesRepr + ?Sized {}
+
 #[cfg(test)]
 mod tests {
     use super::BytesRepr;

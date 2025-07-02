@@ -1,6 +1,64 @@
 use std::marker::PhantomData;
 
-use crate::v2::raw::{ConcreteNodePtr, Inner, Leaf, NodePtr, OpaqueNodePtr};
+use crate::{
+    v2::{
+        raw::{ConcreteNodePtr, Inner, Leaf, NodePtr, OpaqueNodePtr},
+        search_key::SearchKey,
+    },
+    BytesRepr,
+};
+
+use super::{PrefixMatch, PrefixMismatch};
+
+enum SearchStrategy {
+    Optimistic,
+    Pessimistic,
+}
+
+impl SearchStrategy {
+    pub fn match_prefix<T, const PARTIAL_LEN: usize>(
+        &mut self,
+        inner: &T,
+        key: SearchKey<'_>,
+    ) -> Result<PrefixMatch, PrefixMismatch>
+    where
+        T: Inner<PARTIAL_LEN>,
+    {
+        let result = match self {
+            Self::Optimistic => inner.match_optimistic(key).map(PrefixMatch::Optimistic),
+            Self::Pessimistic => inner.match_partial_prefix(key),
+        };
+
+        match &result {
+            Ok(PrefixMatch::Optimistic(_)) => *self = Self::Optimistic,
+            Err(PrefixMismatch { mismatched, .. }) if mismatched.is_none() => {
+                *self = Self::Optimistic;
+            }
+            _ => {}
+        }
+
+        result
+    }
+
+    pub fn match_leaf<K, V, const PARTIAL_LEN: usize>(
+        self,
+        leaf: &Leaf<K, V>,
+        key: SearchKey<'_>,
+        current_depth: usize,
+    ) -> bool
+    where
+        K: BytesRepr,
+    {
+        match self {
+            Self::Pessimistic => {
+                let leaf_key = leaf.key.repr();
+                let current_depth = current_depth.min(leaf_key.len()).min(key.len());
+                leaf_key.shift(current_depth) == key.shift(current_depth)
+            }
+            Self::Optimistic => leaf.key.repr() == key,
+        }
+    }
+}
 
 pub struct Search<K, V, const PARTIAL_LEN: usize>(PhantomData<(K, V)>);
 
@@ -18,6 +76,65 @@ impl<K, V, const PARTIAL_LEN: usize> Search<K, V, PARTIAL_LEN> {
                 ConcreteNodePtr::Inner48(node_ptr) => unsafe { node_ptr.as_ref().min().1 },
                 ConcreteNodePtr::Inner256(node_ptr) => unsafe { node_ptr.as_ref().min().1 },
             }
+        }
+    }
+    pub unsafe fn exact(
+        root: OpaqueNodePtr<K, V, PARTIAL_LEN>,
+        key: SearchKey<'_>,
+    ) -> Option<NodePtr<Leaf<K, V>>>
+    where
+        K: BytesRepr,
+    {
+        #[inline]
+        fn descend<T, K, V, const PARTIAL_LEN: usize>(
+            search_strategy: &mut SearchStrategy,
+            current_depth: &mut usize,
+            node_ptr: NodePtr<T>,
+            key: SearchKey<'_>,
+        ) -> Option<OpaqueNodePtr<K, V, PARTIAL_LEN>>
+        where
+            T: Inner<PARTIAL_LEN, Key = K, Value = V>,
+            K: BytesRepr,
+        {
+            let node = unsafe { node_ptr.as_ref() };
+            let Ok(matching) = search_strategy.match_prefix(node, key.shift(*current_depth)) else {
+                return None;
+            };
+            *current_depth += match matching {
+                PrefixMatch::Pessimistic(n) | PrefixMatch::Optimistic(n) => n,
+            };
+            let child = node.get(key[*current_depth]);
+            if child.is_some() {
+                *current_depth += 1;
+            }
+            child
+        }
+
+        let mut search_strategy = SearchStrategy::Pessimistic;
+        let mut current_node = root;
+        let mut current_depth = 0;
+
+        loop {
+            current_node = match current_node.as_concrete() {
+                ConcreteNodePtr::Leaf(node_ptr) => {
+                    let leaf = unsafe { node_ptr.as_ref() };
+                    return search_strategy
+                        .match_leaf::<_, _, PARTIAL_LEN>(leaf, key, current_depth)
+                        .then_some(node_ptr);
+                }
+                ConcreteNodePtr::Inner4(node_ptr) => {
+                    descend(&mut search_strategy, &mut current_depth, node_ptr, key)
+                }
+                ConcreteNodePtr::Inner16(node_ptr) => {
+                    descend(&mut search_strategy, &mut current_depth, node_ptr, key)
+                }
+                ConcreteNodePtr::Inner48(node_ptr) => {
+                    descend(&mut search_strategy, &mut current_depth, node_ptr, key)
+                }
+                ConcreteNodePtr::Inner256(node_ptr) => {
+                    descend(&mut search_strategy, &mut current_depth, node_ptr, key)
+                }
+            }?;
         }
     }
 }

@@ -16,7 +16,7 @@ pub use ptr::*;
 
 use super::{
     key::BytesRepr,
-    ops::{FullPrefixMismatch, Search},
+    ops::{FullPrefixMismatch, PrefixMatch, PrefixMismatch, Search},
     search_key::SearchKey,
 };
 
@@ -37,6 +37,7 @@ pub enum NodeType {
 }
 
 /// Every type of node in a tree implements this trait.
+#[allow(private_bounds)]
 pub trait Node<const PARTIAL_LEN: usize>: Sealed {
     /// The runtime type of the node.
     const TYPE: NodeType;
@@ -54,12 +55,20 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
     /// The type of the next smaller node type.
     type ShrunkNode: Inner<PARTIAL_LEN, Key = Self::Key, Value = Self::Value>;
 
+    type Iter<'a>: Iterator<Item = (u8, OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>)>
+        + DoubleEndedIterator
+        + ExactSizeIterator
+    where
+        Self: 'a;
+
     /// Grows this node into the next larger type, copying over children and prefix information.
     fn grow(&self) -> Self::GrownNode;
 
     /// Shrinks this node into the next smaller class, copying over children and prefix
     /// information.
     fn shrink(&self) -> Self::ShrunkNode;
+
+    fn iter(&self) -> Self::Iter<'_>;
 
     /// Returns the header of this node.
     fn header(&self) -> &Header<PARTIAL_LEN>;
@@ -138,20 +147,56 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
         // Reads the full prefix of this node.
         let (prefix, leaf) = self.read_full_prefix(current_depth);
         let prefix_len = prefix.common_prefix_len(key.shift(current_depth));
-        let mismatched = prefix[prefix_len];
 
         assert!(prefix_len <= prefix.len());
 
         if prefix_len < prefix.len() {
             // The common prefix with the seach key is shorter than the actual prefix.
-            Err(FullPrefixMismatch {
+            return Err(FullPrefixMismatch {
                 prefix_len,
-                mismatched,
+                mismatched: prefix[prefix_len],
                 leaf,
-            })
-        } else {
-            Ok(prefix_len)
+            });
         }
+        Ok(prefix_len)
+    }
+
+    #[inline]
+    fn match_partial_prefix(&self, key: SearchKey<'_>) -> Result<PrefixMatch, PrefixMismatch> {
+        let matched = if self.header().path.prefix_len() > PARTIAL_LEN {
+            let prefix_len = self.match_optimistic(key)?;
+            PrefixMatch::Optimistic(prefix_len)
+        } else {
+            let prefix_len = self.match_pessimistic(key)?;
+            PrefixMatch::Pessimistic(prefix_len)
+        };
+        Ok(matched)
+    }
+
+    #[inline]
+    fn match_optimistic(&self, key: SearchKey<'_>) -> Result<usize, PrefixMismatch> {
+        let key_len = key.len();
+        let prefix_len = self.header().path.prefix_len();
+        if key_len < prefix_len {
+            return Err(PrefixMismatch {
+                prefix_len: key_len,
+                mismatched: None,
+            });
+        }
+        Ok(prefix_len)
+    }
+
+    #[inline]
+    fn match_pessimistic(&self, key: SearchKey<'_>) -> Result<usize, PrefixMismatch> {
+        let prefix = SearchKey::new(self.header().path.as_ref());
+        let prefix_len = prefix.common_prefix_len(key);
+        if prefix_len < self.header().path.prefix_len() {
+            return Err(PrefixMismatch {
+                prefix_len,
+                mismatched: Some(prefix[prefix_len]),
+            });
+        }
+        Ok(prefix_len)
     }
 }
 
@@ -233,6 +278,34 @@ mod tests {
                 assert!(shrunk.is_full());
                 for i in 0..=max_partial_key {
                     assert_eq!(shrunk.get(i), Some(leaves[i as usize].into()))
+                }
+            }
+        };
+    }
+
+    macro_rules! test_inner_iter {
+        ($name:ident,$T:ty,$max_partial_key:expr) => {
+            #[test]
+            fn $name() {
+                let max_partial_key = $max_partial_key as u8;
+                let mut leaves = NodePtrGuard::new();
+                for i in 0..=max_partial_key {
+                    leaves.manage(Leaf::new(i as usize, i as usize));
+                }
+
+                let mut inner = <$T>::from(Header::from(CompressedPath::default()));
+                for i in 0..=max_partial_key {
+                    inner.add(i, leaves[i as usize].into());
+                }
+
+                for (i, (key, child)) in inner.into_iter().enumerate() {
+                    assert_eq!(key as usize, i);
+                    assert_eq!(child, leaves[key as usize]);
+                }
+
+                for (i, (key, child)) in inner.into_iter().enumerate().rev() {
+                    assert_eq!(key as usize, i);
+                    assert_eq!(child, leaves[key as usize]);
                 }
             }
         };
@@ -437,7 +510,7 @@ mod tests {
                     inner.add(b'f', min_leaf.into());
 
                     let (key, leaf) = inner.read_full_prefix(0);
-                    assert_eq!(leaf.unwrap(), min_leaf);
+                    assert_eq!(leaf.expect("read from leaf"), min_leaf);
                     assert_eq!(&*key, b"abcde".as_slice());
                 }
             }
@@ -451,7 +524,7 @@ mod tests {
                     let inner = <$T>::from(Header::<3>::from(CompressedPath::new(b"abc", 3)));
 
                     let result = inner.match_full_prefix(SearchKey::new(b"abcdef"), 0);
-                    assert_eq!(result.unwrap(), 3);
+                    assert_eq!(result.expect("matching prefix"), 3);
 
                     let result = inner.match_full_prefix(SearchKey::new(b"ab"), 0);
                     let error = result.unwrap_err();
@@ -466,17 +539,17 @@ mod tests {
                     inner.add(b'f', leaf.as_opaque());
 
                     let result = inner.match_full_prefix(SearchKey::new(b"abcde"), 0);
-                    assert_eq!(result.unwrap(), 5);
+                    assert_eq!(result.expect("matching prefix"), 5);
 
                     let result = inner.match_full_prefix(SearchKey::new(b"ab"), 0);
                     let error = result.unwrap_err();
                     assert_eq!(error.prefix_len, 2);
-                    assert_eq!(error.leaf.unwrap(), leaf);
+                    assert_eq!(error.leaf.expect("read from leaf"), leaf);
 
                     let result = inner.match_full_prefix(SearchKey::new(b"abcd"), 0);
                     let error = result.unwrap_err();
                     assert_eq!(error.prefix_len, 4);
-                    assert_eq!(error.leaf.unwrap(), leaf);
+                    assert_eq!(error.leaf.expect("read from leaf"), leaf);
                 }
             }
         };
@@ -489,6 +562,11 @@ mod tests {
     test_inner_shrink!(inner16_shrink, InnerSorted<usize, usize, 10, 16>, 3);
     test_inner_shrink!(inner48_shrink, Inner48<usize, usize, 10>, 15);
     test_inner_shrink!(inner256_shrink, Inner256<usize, usize, 10 >, 47);
+
+    test_inner_iter!(inner4_iter, InnerSorted<usize, usize, 10, 4>, 3);
+    test_inner_iter!(inner16_iter, InnerSorted<usize, usize, 10, 16>, 15);
+    test_inner_iter!(inner48_iter, Inner48<usize, usize, 10>, 47);
+    test_inner_iter!(inner256_iter, Inner256<usize, usize, 10 >, 255);
 
     test_inner_add_and_get!(inner4_add_and_get, InnerSorted<usize, usize, 10, 4>, 3);
     test_inner_add_and_get!(inner16_add_and_get, InnerSorted<usize, usize, 10, 16>, 15);

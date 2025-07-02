@@ -4,6 +4,7 @@ use crate::v2::{raw::RestrictedIndex, Sealed};
 
 use super::{Header, Inner, Inner48, Node, NodeType, OpaqueNodePtr};
 
+#[derive(Debug)]
 #[repr(C)]
 pub struct InnerSorted<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize> {
     pub(crate) header: Header<PARTIAL_LEN>,
@@ -28,6 +29,22 @@ impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize> From<Header<PART
     }
 }
 
+impl<'a, K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize> IntoIterator
+    for &'a InnerSorted<K, V, PARTIAL_LEN, NUM_CHILDREN>
+{
+    type Item = (u8, OpaqueNodePtr<K, V, PARTIAL_LEN>);
+
+    type IntoIter = InnerSortedIter<'a, K, V, PARTIAL_LEN, NUM_CHILDREN>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Self::IntoIter {
+            offset: 0,
+            length: self.header.children as usize,
+            inner: self,
+        }
+    }
+}
+
 impl<K, V, const PARTIAL_LEN: usize> Node<PARTIAL_LEN> for InnerSorted<K, V, PARTIAL_LEN, 4> {
     const TYPE: NodeType = NodeType::Inner4;
     type Key = K;
@@ -36,13 +53,19 @@ impl<K, V, const PARTIAL_LEN: usize> Node<PARTIAL_LEN> for InnerSorted<K, V, PAR
 
 impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for InnerSorted<K, V, PARTIAL_LEN, 4> {
     type GrownNode = InnerSorted<K, V, PARTIAL_LEN, 16>;
+
     type ShrunkNode = Self;
 
+    type Iter<'a>
+        = InnerSortedIter<'a, K, V, PARTIAL_LEN, 4>
+    where
+        Self: 'a;
+
     fn grow(&self) -> Self::GrownNode {
-        let children = self.header.children as usize;
+        let len = self.header.children as usize;
         let mut grown = Self::GrownNode::from(self.header.clone());
-        grown.keys[..children].copy_from_slice(&self.keys[..children]);
-        grown.ptrs[..children].copy_from_slice(&self.ptrs[..children]);
+        grown.keys[..len].copy_from_slice(&self.keys[..len]);
+        grown.ptrs[..len].copy_from_slice(&self.ptrs[..len]);
         grown
     }
 
@@ -50,34 +73,31 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for InnerSorted<K, V, PA
         unreachable!("shrink is impossible")
     }
 
+    fn iter(&self) -> Self::Iter<'_> {
+        self.into_iter()
+    }
+
     fn header(&self) -> &Header<PARTIAL_LEN> {
         self.header()
     }
 
-    fn add(
-        &mut self,
-        key_partial: u8,
-        child_ptr: OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>,
-    ) {
+    fn add(&mut self, key_partial: u8, child_ptr: OpaqueNodePtr<K, V, PARTIAL_LEN>) {
         self.add(key_partial, child_ptr);
     }
 
-    fn del(
-        &mut self,
-        key_partial: u8,
-    ) -> Option<OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>> {
+    fn del(&mut self, key_partial: u8) -> Option<OpaqueNodePtr<K, V, PARTIAL_LEN>> {
         self.del(key_partial)
     }
 
-    fn get(&self, key_partial: u8) -> Option<OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>> {
+    fn get(&self, key_partial: u8) -> Option<OpaqueNodePtr<K, V, PARTIAL_LEN>> {
         self.get(key_partial)
     }
 
-    fn min(&self) -> (u8, OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>) {
+    fn min(&self) -> (u8, OpaqueNodePtr<K, V, PARTIAL_LEN>) {
         self.min()
     }
 
-    fn max(&self) -> (u8, OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>) {
+    fn max(&self) -> (u8, OpaqueNodePtr<K, V, PARTIAL_LEN>) {
         self.max()
     }
 }
@@ -90,7 +110,13 @@ impl<K, V, const PARTIAL_LEN: usize> Node<PARTIAL_LEN> for InnerSorted<K, V, PAR
 
 impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for InnerSorted<K, V, PARTIAL_LEN, 16> {
     type GrownNode = Inner48<K, V, PARTIAL_LEN>;
+
     type ShrunkNode = InnerSorted<K, V, PARTIAL_LEN, 4>;
+
+    type Iter<'a>
+        = InnerSortedIter<'a, K, V, PARTIAL_LEN, 16>
+    where
+        Self: 'a;
 
     fn grow(&self) -> Self::GrownNode {
         let mut grown = Self::GrownNode::from(self.header.clone());
@@ -98,55 +124,46 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for InnerSorted<K, V, PA
             let child_index = RestrictedIndex::try_from(index).expect("index is within bounds");
             grown.keys[usize::from(key)] = child_index;
         }
-        let children = self.header.children as usize;
-        grown.ptrs[..children].copy_from_slice(&self.ptrs[..children]);
+        let len = self.header.children as usize;
+        grown.ptrs[..len].copy_from_slice(&self.ptrs[..len]);
         grown
     }
 
     fn shrink(&self) -> Self::ShrunkNode {
-        let children = self.header.children as usize;
+        let len = self.header.children as usize;
         let mut shrunk = Self::ShrunkNode::from(self.header.clone());
-        shrunk.keys[..children].copy_from_slice(&self.keys[..children]);
-        shrunk.ptrs[..children].copy_from_slice(&self.ptrs[..children]);
+        shrunk.keys[..len].copy_from_slice(&self.keys[..len]);
+        shrunk.ptrs[..len].copy_from_slice(&self.ptrs[..len]);
         shrunk
+    }
+
+    fn iter(&self) -> Self::Iter<'_> {
+        self.into_iter()
     }
 
     fn header(&self) -> &Header<PARTIAL_LEN> {
         self.header()
     }
 
-    fn add(
-        &mut self,
-        key_partial: u8,
-        child_ptr: OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>,
-    ) {
+    fn add(&mut self, key_partial: u8, child_ptr: OpaqueNodePtr<K, V, PARTIAL_LEN>) {
         self.add(key_partial, child_ptr);
     }
 
-    fn del(
-        &mut self,
-        key_partial: u8,
-    ) -> Option<OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>> {
+    fn del(&mut self, key_partial: u8) -> Option<OpaqueNodePtr<K, V, PARTIAL_LEN>> {
         self.del(key_partial)
     }
 
-    fn get(&self, key_partial: u8) -> Option<OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>> {
+    fn get(&self, key_partial: u8) -> Option<OpaqueNodePtr<K, V, PARTIAL_LEN>> {
         self.get(key_partial)
     }
 
-    fn min(&self) -> (u8, OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>) {
+    fn min(&self) -> (u8, OpaqueNodePtr<K, V, PARTIAL_LEN>) {
         self.min()
     }
 
-    fn max(&self) -> (u8, OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>) {
+    fn max(&self) -> (u8, OpaqueNodePtr<K, V, PARTIAL_LEN>) {
         self.max()
     }
-}
-
-enum SearchResult {
-    Found(usize),
-    Insert(usize),
-    NotFound(usize),
 }
 
 impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
@@ -204,7 +221,6 @@ impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
         let pos = match self.search(key_partial) {
             SearchResult::Found(pos) => pos,
             SearchResult::Insert(pos) => {
-                println!("{pos}");
                 let len = self.header.children as usize;
                 self.header.children += 1;
                 self.keys.copy_within(pos..len, pos + 1);
@@ -257,4 +273,62 @@ impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
         let ptrs = self.ptrs();
         (keys[n], ptrs[n])
     }
+}
+
+#[derive(Debug)]
+pub struct InnerSortedIter<'a, K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize> {
+    offset: usize,
+    length: usize,
+    inner: &'a InnerSorted<K, V, PARTIAL_LEN, NUM_CHILDREN>,
+}
+
+impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize> ExactSizeIterator
+    for InnerSortedIter<'_, K, V, PARTIAL_LEN, NUM_CHILDREN>
+{
+    fn len(&self) -> usize {
+        self.length
+    }
+}
+
+impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize> DoubleEndedIterator
+    for InnerSortedIter<'_, K, V, PARTIAL_LEN, NUM_CHILDREN>
+{
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.length == 0 {
+            return None;
+        }
+        let index = self.offset + self.length - 1;
+        let key = unsafe { self.inner.keys[index].assume_init_read() };
+        let ptr = unsafe { self.inner.ptrs[index].assume_init_read() };
+        self.length -= 1;
+        Some((key, ptr))
+    }
+}
+
+impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize> Iterator
+    for InnerSortedIter<'_, K, V, PARTIAL_LEN, NUM_CHILDREN>
+{
+    type Item = (u8, OpaqueNodePtr<K, V, PARTIAL_LEN>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.length == 0 {
+            return None;
+        }
+        let index = self.offset;
+        let key = unsafe { self.inner.keys[index].assume_init_read() };
+        let ptr = unsafe { self.inner.ptrs[index].assume_init_read() };
+        self.offset += 1;
+        self.length -= 1;
+        Some((key, ptr))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.length, Some(self.length))
+    }
+}
+
+enum SearchResult {
+    Found(usize),
+    Insert(usize),
+    NotFound(usize),
 }
