@@ -5,7 +5,7 @@ use std::{
     time::Instant,
 };
 
-use yaart::{Mapped, RadixTreeMap, ToBigEndian};
+use yaart::{Mapped, RadixTreeMap, ToSortedBigEndian};
 
 fn main() {
     let path = std::env::args().nth(1).unwrap();
@@ -83,7 +83,7 @@ fn main() {
     }
 
     {
-        let mut radix = RadixTreeMap::<Mapped<ToBigEndian, i16>, usize>::new();
+        let mut radix = RadixTreeMap::<Mapped<ToSortedBigEndian, i16>, usize>::new();
         for (i, w) in (i16::MIN..=i16::MAX).enumerate() {
             assert!(radix.insert(Mapped::decompose(w), i).is_none());
         }

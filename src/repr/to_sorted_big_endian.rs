@@ -1,13 +1,13 @@
 use super::{BytesMapping, Mapped, OrderedBytesRepr};
 
-/// A [`BytesMapping`] that maps between integral values and their bytes representation in
-/// big-endian order.
+/// A [`BytesMapping`] that maps between integral values and values whose big-endian bytes
+/// representation has the some order as the original integral value it's based on.
 #[derive(Debug)]
-pub struct ToBigEndian;
+pub struct ToSortedBigEndian;
 
 macro_rules! impl_to_big_endian_for_integer {
     ($signed:ty, $unsigned:ty) => {
-        impl BytesMapping<$signed> for ToBigEndian {
+        impl BytesMapping<$signed> for ToSortedBigEndian {
             type Key = [u8; std::mem::size_of::<$signed>()];
 
             fn to_bytes(value: $signed) -> Self::Key {
@@ -21,7 +21,7 @@ macro_rules! impl_to_big_endian_for_integer {
             }
         }
 
-        impl BytesMapping<$unsigned> for ToBigEndian {
+        impl BytesMapping<$unsigned> for ToSortedBigEndian {
             type Key = [u8; std::mem::size_of::<$unsigned>()];
 
             fn to_bytes(value: $unsigned) -> Self::Key {
@@ -33,32 +33,32 @@ macro_rules! impl_to_big_endian_for_integer {
             }
         }
 
-        impl PartialOrd for Mapped<ToBigEndian, $signed> {
+        impl PartialOrd for Mapped<ToSortedBigEndian, $signed> {
             fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
                 Some(self.cmp(other))
             }
         }
 
-        impl PartialOrd for Mapped<ToBigEndian, $unsigned> {
+        impl PartialOrd for Mapped<ToSortedBigEndian, $unsigned> {
             fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
                 Some(self.cmp(other))
             }
         }
 
-        impl Ord for Mapped<ToBigEndian, $signed> {
+        impl Ord for Mapped<ToSortedBigEndian, $signed> {
             fn cmp(&self, other: &Self) -> std::cmp::Ordering {
                 self.as_ref().cmp(other.as_ref())
             }
         }
 
-        impl Ord for Mapped<ToBigEndian, $unsigned> {
+        impl Ord for Mapped<ToSortedBigEndian, $unsigned> {
             fn cmp(&self, other: &Self) -> std::cmp::Ordering {
                 self.as_ref().cmp(other.as_ref())
             }
         }
 
-        impl OrderedBytesRepr for Mapped<ToBigEndian, $signed> {}
-        impl OrderedBytesRepr for Mapped<ToBigEndian, $unsigned> {}
+        impl OrderedBytesRepr for Mapped<ToSortedBigEndian, $signed> {}
+        impl OrderedBytesRepr for Mapped<ToSortedBigEndian, $unsigned> {}
     };
 }
 

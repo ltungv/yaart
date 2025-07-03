@@ -1,10 +1,10 @@
 mod identity;
 mod mapped;
-mod to_big_endian;
+mod to_sorted_big_endian;
 
 pub use identity::*;
 pub use mapped::*;
-pub use to_big_endian::*;
+pub use to_sorted_big_endian::*;
 
 use super::search_key::SearchKey;
 
@@ -114,7 +114,7 @@ impl<T> OrderedBytesRepr for &T where T: OrderedBytesRepr + ?Sized {}
 
 #[cfg(test)]
 mod tests {
-    use crate::ToBigEndian;
+    use crate::ToSortedBigEndian;
 
     use super::{BytesRepr, Identity, Mapped};
 
@@ -168,14 +168,17 @@ mod tests {
 
     #[test]
     fn mapped_to_big_endian() {
-        assert_eq!(Mapped::<ToBigEndian, _>::decompose(u8::MAX).repr().as_ref(), &[u8::MAX]);
-        assert_eq!(Mapped::<ToBigEndian, _>::decompose(i8::MAX).repr().as_ref(), &[(i8::MAX as u8) ^ (1 << 7)]);
-        assert_eq!(Mapped::<ToBigEndian, _>::decompose(65535u16).repr().as_ref(), 65535u16.to_be_bytes());
+        assert_eq!(Mapped::<ToSortedBigEndian, _>::decompose(u8::MAX).repr().as_ref(), &[u8::MAX]);
+        assert_eq!(Mapped::<ToSortedBigEndian, _>::decompose(i8::MAX).repr().as_ref(), &[(i8::MAX as u8) ^ (1 << 7)]);
+        assert_eq!(Mapped::<ToSortedBigEndian, _>::decompose(65535u16).repr().as_ref(), 65535u16.to_be_bytes());
         assert_eq!(
-            Mapped::<ToBigEndian, _>::decompose(32767i16).repr().as_ref(),
+            Mapped::<ToSortedBigEndian, _>::decompose(32767i16).repr().as_ref(),
             ((32767i16 as u16) ^ (1 << 15)).to_be_bytes()
         );
-        assert_eq!(Mapped::<ToBigEndian, _>::decompose(2387u32).repr().as_ref(), 2387u32.to_be_bytes());
-        assert_eq!(Mapped::<ToBigEndian, _>::decompose(2387i32).repr().as_ref(), ((2387i32 as u32) ^ (1 << 31)).to_be_bytes());
+        assert_eq!(Mapped::<ToSortedBigEndian, _>::decompose(2387u32).repr().as_ref(), 2387u32.to_be_bytes());
+        assert_eq!(
+            Mapped::<ToSortedBigEndian, _>::decompose(2387i32).repr().as_ref(),
+            ((2387i32 as u32) ^ (1 << 31)).to_be_bytes()
+        );
     }
 }
