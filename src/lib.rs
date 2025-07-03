@@ -56,7 +56,7 @@ impl<K, V, const PARTIAL_LEN: usize> Default for RadixTreeMap<K, V, PARTIAL_LEN>
 
 impl<K, V, const PARTIAL_LEN: usize> fmt::Debug for RadixTreeMap<K, V, PARTIAL_LEN>
 where
-    K: BytesRepr,
+    K: fmt::Debug,
     V: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

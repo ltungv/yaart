@@ -1,9 +1,8 @@
-use std::fmt;
-
-use crate::{BytesRepr, Sealed};
+use crate::Sealed;
 
 use super::{Node, NodeType};
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct Leaf<K, V> {
     pub key: K,
     pub value: V,
@@ -12,16 +11,6 @@ pub struct Leaf<K, V> {
 impl<K, V> From<(K, V)> for Leaf<K, V> {
     fn from((key, value): (K, V)) -> Self {
         Self::new(key, value)
-    }
-}
-
-impl<K, V> fmt::Debug for Leaf<K, V>
-where
-    K: BytesRepr,
-    V: fmt::Debug,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Leaf").field("key", &self.key.repr()).field("value", &self.value).finish()
     }
 }
 

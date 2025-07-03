@@ -113,7 +113,7 @@ impl<K, V, const PARTIAL_LEN: usize> Stateless<K, V, PARTIAL_LEN> {
     }
     pub unsafe fn fmt_debug(root: OpaqueNodePtr<K, V, PARTIAL_LEN>, f: &mut fmt::Formatter<'_>) -> fmt::Result
     where
-        K: BytesRepr,
+        K: fmt::Debug,
         V: fmt::Debug,
     {
         fn visit<T, const PARTIAL_LEN: usize>(
@@ -125,7 +125,7 @@ impl<K, V, const PARTIAL_LEN: usize> Stateless<K, V, PARTIAL_LEN> {
         ) -> fmt::Result
         where
             T: Inner<PARTIAL_LEN>,
-            T::Key: BytesRepr,
+            T::Key: fmt::Debug,
             T::Value: fmt::Debug,
         {
             let inner = unsafe { node_ptr.as_ref() };
@@ -161,6 +161,7 @@ impl<K, V, const PARTIAL_LEN: usize> Stateless<K, V, PARTIAL_LEN> {
         }
         Ok(())
     }
+
     /// Checks if the given key at the current depth matches the compressed path of an inner node.
     /// Upon a match, updates the current depth and returns the next child to visit based on the
     /// partial key derived from the updated depth.

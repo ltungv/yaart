@@ -9,6 +9,7 @@ use crate::{
 
 use super::{Branch, FullPrefixMismatch};
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct Inserted<'a, K, V, const PARTIAL_LEN: usize> {
     pub prev: Option<Leaf<K, V>>,
     pub root: OpaqueNodePtr<K, V, PARTIAL_LEN>,
@@ -16,19 +17,11 @@ pub struct Inserted<'a, K, V, const PARTIAL_LEN: usize> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum Strategy<K, V, const PARTIAL_LEN: usize> {
-    OverwriteLeafValue { leaf: NodePtr<Leaf<K, V>> },
-    SplitAtLeaf { leaf: NodePtr<Leaf<K, V>>, prefix_len: usize },
-    AddKeyPartialToInner { inner: ConcreteInnerNodePtr<K, V, PARTIAL_LEN> },
-    SplitAtInner { inner: ConcreteInnerNodePtr<K, V, PARTIAL_LEN>, mismatch: FullPrefixMismatch<K, V, PARTIAL_LEN> },
-}
-
-#[derive(Debug, PartialEq, Eq)]
 pub struct Insert<K, V, const PARTIAL_LEN: usize> {
     depth: usize,
     root: OpaqueNodePtr<K, V, PARTIAL_LEN>,
     parent: Option<Branch<K, V, PARTIAL_LEN>>,
-    strategy: Strategy<K, V, PARTIAL_LEN>,
+    strategy: InsertStrategy<K, V, PARTIAL_LEN>,
 }
 
 impl<K, V, const PARTIAL_LEN: usize> Insert<K, V, PARTIAL_LEN> {
@@ -37,7 +30,7 @@ impl<K, V, const PARTIAL_LEN: usize> Insert<K, V, PARTIAL_LEN> {
         K: BytesRepr,
     {
         let new_inner = match self.strategy {
-            Strategy::OverwriteLeafValue { leaf: leaf_ptr } => {
+            InsertStrategy::OverwriteLeafValue { leaf: leaf_ptr } => {
                 let new_leaf = Leaf::new(key, value);
                 return Inserted {
                     prev: Some(unsafe { leaf_ptr.as_ptr().replace(new_leaf) }),
@@ -45,7 +38,7 @@ impl<K, V, const PARTIAL_LEN: usize> Insert<K, V, PARTIAL_LEN> {
                     marker: PhantomData,
                 };
             }
-            Strategy::SplitAtLeaf { leaf: old_leaf, prefix_len } => {
+            InsertStrategy::SplitAtLeaf { leaf: old_leaf, prefix_len } => {
                 let new_key = key.repr();
                 let old_key = {
                     let leaf = unsafe { old_leaf.as_ref() };
@@ -60,7 +53,7 @@ impl<K, V, const PARTIAL_LEN: usize> Insert<K, V, PARTIAL_LEN> {
                 inner4.add(old_partial_key, old_leaf.as_opaque());
                 NodePtr::alloc(inner4).as_opaque()
             }
-            Strategy::AddKeyPartialToInner { inner: inner_ptr } => {
+            InsertStrategy::AddKeyPartialToInner { inner: inner_ptr } => {
                 fn add<T, const PARTIAL_LEN: usize>(
                     inner_ptr: NodePtr<T>,
                     partial_key: u8,
@@ -91,7 +84,7 @@ impl<K, V, const PARTIAL_LEN: usize> Insert<K, V, PARTIAL_LEN> {
                     ConcreteInnerNodePtr::Inner256(node_ptr) => add(node_ptr, partial_key, new_leaf),
                 }
             }
-            Strategy::SplitAtInner { inner: inner_ptr, mismatch } => {
+            InsertStrategy::SplitAtInner { inner: inner_ptr, mismatch } => {
                 let partial_key = key.repr()[self.depth + mismatch.prefix_len];
                 let new_leaf = NodePtr::alloc(Leaf::new(key, value));
                 let mut inner4 = {
@@ -190,13 +183,13 @@ impl<K, V, const PARTIAL_LEN: usize> Insert<K, V, PARTIAL_LEN> {
                     let strategy = if leaf_key == key {
                         // If it fully matches, we just need to replace the leaf's value without
                         // changing the tree's structure.
-                        Strategy::OverwriteLeafValue { leaf: node_ptr }
+                        InsertStrategy::OverwriteLeafValue { leaf: node_ptr }
                     } else {
                         // There's a mismatch so we create a new inner node having a prefix
                         // covering everything before the mismatch. Then, we create a new leaf and
                         // add it and the existing leaf to the new inner node using their
                         // mismatched values as the partial_key.
-                        Strategy::SplitAtLeaf {
+                        InsertStrategy::SplitAtLeaf {
                             leaf: node_ptr,
                             prefix_len: leaf_key.shift(current_depth).common_prefix_len(key.shift(current_depth)),
                         }
@@ -229,7 +222,7 @@ impl<K, V, const PARTIAL_LEN: usize> Insert<K, V, PARTIAL_LEN> {
                         depth: current_depth,
                         root,
                         parent: current_parent,
-                        strategy: Strategy::SplitAtInner { inner: current_inner, mismatch },
+                        strategy: InsertStrategy::SplitAtInner { inner: current_inner, mismatch },
                     };
                 }
             };
@@ -242,7 +235,7 @@ impl<K, V, const PARTIAL_LEN: usize> Insert<K, V, PARTIAL_LEN> {
                     depth: current_depth,
                     root,
                     parent: current_parent,
-                    strategy: Strategy::AddKeyPartialToInner { inner: current_inner },
+                    strategy: InsertStrategy::AddKeyPartialToInner { inner: current_inner },
                 };
             };
 
@@ -258,6 +251,14 @@ impl<K, V, const PARTIAL_LEN: usize> Insert<K, V, PARTIAL_LEN> {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum InsertStrategy<K, V, const PARTIAL_LEN: usize> {
+    OverwriteLeafValue { leaf: NodePtr<Leaf<K, V>> },
+    SplitAtLeaf { leaf: NodePtr<Leaf<K, V>>, prefix_len: usize },
+    AddKeyPartialToInner { inner: ConcreteInnerNodePtr<K, V, PARTIAL_LEN> },
+    SplitAtInner { inner: ConcreteInnerNodePtr<K, V, PARTIAL_LEN>, mismatch: FullPrefixMismatch<K, V, PARTIAL_LEN> },
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -266,7 +267,7 @@ mod tests {
         search_key::SearchKey,
     };
 
-    use super::{Branch, FullPrefixMismatch, Insert, Strategy};
+    use super::{Branch, FullPrefixMismatch, Insert, InsertStrategy};
 
     macro_rules! test_prepare {
         ($name:ident,$T:ty) => {
@@ -299,7 +300,7 @@ mod tests {
                             depth: 12,
                             root: root.as_opaque(),
                             parent: Some(Branch { ptr: inner2.into(), key: b'1' }),
-                            strategy: Strategy::OverwriteLeafValue { leaf: leaf3 },
+                            strategy: InsertStrategy::OverwriteLeafValue { leaf: leaf3 },
                         },
                     ),
                     (
@@ -308,7 +309,7 @@ mod tests {
                             depth: 9,
                             root: root.as_opaque(),
                             parent: Some(Branch { ptr: root.into(), key: b'1' }),
-                            strategy: Strategy::AddKeyPartialToInner { inner: inner1.into() },
+                            strategy: InsertStrategy::AddKeyPartialToInner { inner: inner1.into() },
                         },
                     ),
                     (
@@ -317,7 +318,7 @@ mod tests {
                             depth: 11,
                             root: root.as_opaque(),
                             parent: Some(Branch { ptr: root.into(), key: b'2' }),
-                            strategy: Strategy::AddKeyPartialToInner { inner: inner2.into() },
+                            strategy: InsertStrategy::AddKeyPartialToInner { inner: inner2.into() },
                         },
                     ),
                     (
@@ -326,7 +327,7 @@ mod tests {
                             depth: 3,
                             root: root.as_opaque(),
                             parent: None,
-                            strategy: Strategy::AddKeyPartialToInner { inner: root.into() },
+                            strategy: InsertStrategy::AddKeyPartialToInner { inner: root.into() },
                         },
                     ),
                     (
@@ -335,7 +336,7 @@ mod tests {
                             depth: 10,
                             root: root.as_opaque(),
                             parent: Some(Branch { ptr: inner1.into(), key: b'1' }),
-                            strategy: Strategy::SplitAtLeaf { leaf: leaf1, prefix_len: 2 },
+                            strategy: InsertStrategy::SplitAtLeaf { leaf: leaf1, prefix_len: 2 },
                         },
                     ),
                     (
@@ -344,7 +345,7 @@ mod tests {
                             depth: 4,
                             root: root.as_opaque(),
                             parent: Some(Branch { ptr: root.into(), key: b'1' }),
-                            strategy: Strategy::SplitAtInner {
+                            strategy: InsertStrategy::SplitAtInner {
                                 inner: inner1.into(),
                                 mismatch: FullPrefixMismatch { prefix_len: 3, mismatched: b'd', leaf: Some(leaf1) },
                             },
@@ -356,7 +357,7 @@ mod tests {
                             depth: 4,
                             root: root.as_opaque(),
                             parent: Some(Branch { ptr: root.into(), key: b'2' }),
-                            strategy: Strategy::SplitAtInner {
+                            strategy: InsertStrategy::SplitAtInner {
                                 inner: inner2.into(),
                                 mismatch: FullPrefixMismatch { prefix_len: 3, mismatched: b'd', leaf: Some(leaf3) },
                             },

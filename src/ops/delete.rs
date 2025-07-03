@@ -7,11 +7,13 @@ use crate::{
 
 use super::{Branch, Stateless};
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct Deleted<K, V, const PARTIAL_LEN: usize> {
     pub root: Option<OpaqueNodePtr<K, V, PARTIAL_LEN>>,
     pub leaf: Leaf<K, V>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct Delete<K, V, const PARTIAL_LEN: usize> {
     grandparent: Option<Branch<K, V, PARTIAL_LEN>>,
     parent: Option<Branch<K, V, PARTIAL_LEN>>,
