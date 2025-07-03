@@ -1,18 +1,14 @@
 mod delete;
-mod fmt;
 mod insert;
-mod ptr;
-mod search;
+mod stateless;
 
 use crate::raw::NodePtr;
 
 use super::raw::{ConcreteInnerNodePtr, Leaf};
 
 pub use delete::*;
-pub use fmt::*;
 pub use insert::*;
-pub use ptr::*;
-pub use search::*;
+pub use stateless::*;
 
 /// A branch determines the origin of a node in the tree consisting of a pointer to the node's
 /// parent and a key partial that locates the node within its parent.

@@ -5,7 +5,7 @@ use crate::{
     BytesRepr, SearchKey,
 };
 
-use super::{Branch, Search};
+use super::{Branch, Stateless};
 
 pub struct Deleted<K, V, const PARTIAL_LEN: usize> {
     pub root: Option<OpaqueNodePtr<K, V, PARTIAL_LEN>>,
@@ -122,16 +122,16 @@ impl<K, V, const PARTIAL_LEN: usize> Delete<K, V, PARTIAL_LEN> {
                     });
                 }
                 ConcreteNodePtr::Inner4(node_ptr) => (ConcreteInnerNodePtr::from(node_ptr), unsafe {
-                    Search::descend(&mut search_strategy, &mut current_depth, node_ptr, key)?
+                    Stateless::descend(&mut search_strategy, &mut current_depth, node_ptr, key)?
                 }),
                 ConcreteNodePtr::Inner16(node_ptr) => (ConcreteInnerNodePtr::from(node_ptr), unsafe {
-                    Search::descend(&mut search_strategy, &mut current_depth, node_ptr, key)?
+                    Stateless::descend(&mut search_strategy, &mut current_depth, node_ptr, key)?
                 }),
                 ConcreteNodePtr::Inner48(node_ptr) => (ConcreteInnerNodePtr::from(node_ptr), unsafe {
-                    Search::descend(&mut search_strategy, &mut current_depth, node_ptr, key)?
+                    Stateless::descend(&mut search_strategy, &mut current_depth, node_ptr, key)?
                 }),
                 ConcreteNodePtr::Inner256(node_ptr) => (ConcreteInnerNodePtr::from(node_ptr), unsafe {
-                    Search::descend(&mut search_strategy, &mut current_depth, node_ptr, key)?
+                    Stateless::descend(&mut search_strategy, &mut current_depth, node_ptr, key)?
                 }),
             };
             current_grandparent = current_parent;

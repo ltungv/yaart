@@ -5,7 +5,7 @@ mod inner_sorted;
 mod leaf;
 mod ptr;
 
-use crate::Sealed;
+use crate::{ops::Stateless, Sealed};
 
 pub use header::*;
 pub use inner256::*;
@@ -15,7 +15,7 @@ pub use leaf::*;
 pub use ptr::*;
 
 use super::{
-    ops::{FullPrefixMismatch, PrefixMatch, PrefixMismatch, Search},
+    ops::{FullPrefixMismatch, PrefixMatch, PrefixMismatch},
     repr::BytesRepr,
     search_key::SearchKey,
 };
@@ -131,7 +131,7 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
             (SearchKey::new(header.path.as_partial_prefix()), None)
         } else {
             // Find the minimum leaf which is guaranteed to have the full prefix of this node.
-            let leaf_ptr = unsafe { Search::minimum(self.min().1) };
+            let leaf_ptr = unsafe { Stateless::search_minimum(self.min().1) };
             let leaf = unsafe { leaf_ptr.as_ref() };
             let prefix = leaf.key.repr().range(current_depth, header.path.prefix_len());
             (prefix, Some(leaf_ptr))

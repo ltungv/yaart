@@ -23,7 +23,7 @@ pub mod test_common;
 
 use std::{borrow::Borrow, fmt, num::NonZeroUsize};
 
-use ops::{Delete, Fmt, Insert, Ptr, Search};
+use ops::{Delete, Insert, Stateless};
 use raw::{Leaf, NodePtr, OpaqueNodePtr};
 
 pub use repr::*;
@@ -42,7 +42,7 @@ impl<K, V, const PARTIAL_LEN: usize> Drop for RadixTreeMap<K, V, PARTIAL_LEN> {
     fn drop(&mut self) {
         if let Some(state) = &self.state {
             unsafe {
-                Ptr::dealloc(state.root);
+                Stateless::dealloc(state.root);
             }
         }
     }
@@ -63,7 +63,7 @@ where
         let Some(state) = &self.state else {
             return write!(f, "<EMPTY>");
         };
-        unsafe { Fmt::debug(state.root, f) }
+        unsafe { Stateless::fmt_debug(state.root, f) }
     }
 }
 
@@ -213,7 +213,7 @@ impl<K, V, const PARTIAL_LEN: usize> NonEmptyRadixTreeMap<K, V, PARTIAL_LEN> {
         K: BytesRepr + Borrow<Q>,
         Q: BytesRepr + ?Sized,
     {
-        let leaf_ptr = unsafe { Search::exact(self.root, key.repr())? };
+        let leaf_ptr = unsafe { Stateless::search_exact(self.root, key.repr())? };
         let leaf = unsafe { leaf_ptr.as_ref() };
         Some(&leaf.value)
     }
@@ -222,7 +222,7 @@ impl<K, V, const PARTIAL_LEN: usize> NonEmptyRadixTreeMap<K, V, PARTIAL_LEN> {
     where
         K: OrderedBytesRepr,
     {
-        let leaf_ptr = unsafe { Search::minimum(self.root) };
+        let leaf_ptr = unsafe { Stateless::search_minimum(self.root) };
         unsafe { leaf_ptr.as_ref() }
     }
 
@@ -230,7 +230,7 @@ impl<K, V, const PARTIAL_LEN: usize> NonEmptyRadixTreeMap<K, V, PARTIAL_LEN> {
     where
         K: OrderedBytesRepr,
     {
-        let leaf_ptr = unsafe { Search::maximum(self.root) };
+        let leaf_ptr = unsafe { Stateless::search_maximum(self.root) };
         unsafe { leaf_ptr.as_ref() }
     }
 }
