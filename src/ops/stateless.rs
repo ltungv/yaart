@@ -238,7 +238,7 @@ impl SearchStrategy {
 mod tests {
     use crate::{
         compressed_path::CompressedPath,
-        raw::{Header, Inner, Inner256, Inner48, InnerSorted, Leaf, NodePtrGuard},
+        raw::{Header, Inner, Inner16, Inner256, Inner4, Inner48, Leaf, NodePtrGuard},
     };
 
     use super::Stateless;
@@ -275,8 +275,8 @@ mod tests {
         };
     }
 
-    test_search_minimum!(inner4_minimum, InnerSorted::<Vec<u8>, usize, 3, 4>);
-    test_search_minimum!(inner16_minimum, InnerSorted::<Vec<u8>, usize, 3, 16>);
+    test_search_minimum!(inner4_minimum, Inner4::<Vec<u8>, usize, 3>);
+    test_search_minimum!(inner16_minimum, Inner16::<Vec<u8>, usize, 3>);
     test_search_minimum!(inner48_minimum, Inner48::<Vec<u8>, usize, 3>);
     test_search_minimum!(inner256_minimum, Inner256::<Vec<u8>, usize, 3>);
 }

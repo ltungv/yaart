@@ -2,7 +2,7 @@ use std::{marker::PhantomData, ops::ControlFlow};
 
 use crate::{
     compressed_path::CompressedPath,
-    raw::{ConcreteInnerNodePtr, ConcreteNodePtr, Header, Inner, InnerSorted, Leaf, NodePtr, OpaqueNodePtr},
+    raw::{ConcreteInnerNodePtr, ConcreteNodePtr, Header, Inner, Inner4, Leaf, NodePtr, OpaqueNodePtr},
     repr::BytesRepr,
     search_key::SearchKey,
 };
@@ -55,7 +55,7 @@ impl<K, V, const PARTIAL_LEN: usize> Insert<K, V, PARTIAL_LEN> {
                 let old_partial_key = old_key[self.depth + prefix_len];
                 let header = Header::from(CompressedPath::new(&new_key.range(self.depth, prefix_len), prefix_len));
                 let new_leaf = NodePtr::alloc(Leaf::new(key, value));
-                let mut inner4 = InnerSorted::<K, V, PARTIAL_LEN, 4>::from(header);
+                let mut inner4 = Inner4::from(header);
                 inner4.add(new_partial_key, new_leaf.as_opaque());
                 inner4.add(old_partial_key, old_leaf.as_opaque());
                 NodePtr::alloc(inner4).as_opaque()
@@ -96,10 +96,7 @@ impl<K, V, const PARTIAL_LEN: usize> Insert<K, V, PARTIAL_LEN> {
                 let new_leaf = NodePtr::alloc(Leaf::new(key, value));
                 let mut inner4 = {
                     let header = unsafe { inner_ptr.header() };
-                    InnerSorted::<K, V, PARTIAL_LEN, 4>::from(Header::from(CompressedPath::new(
-                        header.path.as_partial_prefix(),
-                        mismatch.prefix_len,
-                    )))
+                    Inner4::from(Header::from(CompressedPath::new(header.path.as_partial_prefix(), mismatch.prefix_len)))
                 };
 
                 inner4.add(mismatch.mismatched, inner_ptr.as_opaque());
@@ -265,7 +262,7 @@ impl<K, V, const PARTIAL_LEN: usize> Insert<K, V, PARTIAL_LEN> {
 mod tests {
     use crate::{
         compressed_path::CompressedPath,
-        raw::{Header, Inner, Inner256, Inner48, InnerSorted, Leaf, NodePtrGuard},
+        raw::{Header, Inner, Inner16, Inner256, Inner4, Inner48, Leaf, NodePtrGuard},
         search_key::SearchKey,
     };
 
@@ -374,8 +371,8 @@ mod tests {
         };
     }
 
-    test_prepare!(inner4_prepare, InnerSorted::<Vec<u8>, usize, 3, 4>);
-    test_prepare!(inner16_prepare, InnerSorted::<Vec<u8>, usize, 3, 16>);
+    test_prepare!(inner4_prepare, Inner4::<Vec<u8>, usize, 3>);
+    test_prepare!(inner16_prepare, Inner16::<Vec<u8>, usize, 3>);
     test_prepare!(inner48_prepare, Inner48::<Vec<u8>, usize, 3>);
     test_prepare!(inner256_prepare, Inner256::<Vec<u8>, usize, 3>);
 }

@@ -8,7 +8,7 @@ use std::{
 
 use crate::tagged_ptr::TaggedPtr;
 
-use super::{Header, Inner, Inner256, Inner48, InnerSorted, Leaf, Node, NodeType};
+use super::{Header, Inner, Inner16, Inner256, Inner4, Inner48, Leaf, Node, NodeType};
 
 #[cfg(test)]
 pub use tests::*;
@@ -108,8 +108,8 @@ impl<K, V, const PARTIAL_LEN: usize> OpaqueNodePtr<K, V, PARTIAL_LEN> {
 /// An enumeration of different types of node pointer.
 pub enum ConcreteNodePtr<K, V, const PARTIAL_LEN: usize> {
     Leaf(NodePtr<Leaf<K, V>>),
-    Inner4(NodePtr<InnerSorted<K, V, PARTIAL_LEN, 4>>),
-    Inner16(NodePtr<InnerSorted<K, V, PARTIAL_LEN, 16>>),
+    Inner4(NodePtr<Inner4<K, V, PARTIAL_LEN>>),
+    Inner16(NodePtr<Inner16<K, V, PARTIAL_LEN>>),
     Inner48(NodePtr<Inner48<K, V, PARTIAL_LEN>>),
     Inner256(NodePtr<Inner256<K, V, PARTIAL_LEN>>),
 }
@@ -199,8 +199,8 @@ impl<K, V, const PARTIAL_LEN: usize> fmt::Pointer for ConcreteNodePtr<K, V, PART
 
 /// An enumeration of different types of node pointer.
 pub enum ConcreteInnerNodePtr<K, V, const PARTIAL_LEN: usize> {
-    Inner4(NodePtr<InnerSorted<K, V, PARTIAL_LEN, 4>>),
-    Inner16(NodePtr<InnerSorted<K, V, PARTIAL_LEN, 16>>),
+    Inner4(NodePtr<Inner4<K, V, PARTIAL_LEN>>),
+    Inner16(NodePtr<Inner16<K, V, PARTIAL_LEN>>),
     Inner48(NodePtr<Inner48<K, V, PARTIAL_LEN>>),
     Inner256(NodePtr<Inner256<K, V, PARTIAL_LEN>>),
 }

@@ -4,6 +4,10 @@ use crate::{raw::RestrictedIndex, Sealed};
 
 use super::{Header, Inner, Inner48, Node, NodeType, OpaqueNodePtr};
 
+pub type Inner4<K, V, const PARTIAL_LEN: usize> = InnerSorted<K, V, PARTIAL_LEN, 4>;
+
+pub type Inner16<K, V, const PARTIAL_LEN: usize> = InnerSorted<K, V, PARTIAL_LEN, 16>;
+
 #[derive(Debug)]
 #[repr(C)]
 pub struct InnerSorted<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize> {
@@ -38,14 +42,14 @@ impl<'a, K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize> IntoIterator
     }
 }
 
-impl<K, V, const PARTIAL_LEN: usize> Node<PARTIAL_LEN> for InnerSorted<K, V, PARTIAL_LEN, 4> {
+impl<K, V, const PARTIAL_LEN: usize> Node<PARTIAL_LEN> for Inner4<K, V, PARTIAL_LEN> {
     const TYPE: NodeType = NodeType::Inner4;
     type Key = K;
     type Value = V;
 }
 
-impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for InnerSorted<K, V, PARTIAL_LEN, 4> {
-    type GrownNode = InnerSorted<K, V, PARTIAL_LEN, 16>;
+impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for Inner4<K, V, PARTIAL_LEN> {
+    type GrownNode = Inner16<K, V, PARTIAL_LEN>;
 
     type ShrunkNode = Self;
 
@@ -95,16 +99,16 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for InnerSorted<K, V, PA
     }
 }
 
-impl<K, V, const PARTIAL_LEN: usize> Node<PARTIAL_LEN> for InnerSorted<K, V, PARTIAL_LEN, 16> {
+impl<K, V, const PARTIAL_LEN: usize> Node<PARTIAL_LEN> for Inner16<K, V, PARTIAL_LEN> {
     const TYPE: NodeType = NodeType::Inner16;
     type Key = K;
     type Value = V;
 }
 
-impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for InnerSorted<K, V, PARTIAL_LEN, 16> {
+impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for Inner16<K, V, PARTIAL_LEN> {
     type GrownNode = Inner48<K, V, PARTIAL_LEN>;
 
-    type ShrunkNode = InnerSorted<K, V, PARTIAL_LEN, 4>;
+    type ShrunkNode = Inner4<K, V, PARTIAL_LEN>;
 
     type Iter<'a>
         = InnerSortedIter<'a, K, V, PARTIAL_LEN, 16>
