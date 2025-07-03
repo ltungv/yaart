@@ -21,9 +21,7 @@ mod tagged_ptr;
 #[doc(hidden)]
 pub mod test_common;
 
-use std::borrow::Borrow;
-use std::fmt;
-use std::num::NonZeroUsize;
+use std::{borrow::Borrow, fmt, num::NonZeroUsize};
 
 use ops::{Delete, Fmt, Insert, Ptr, Search};
 use raw::{Leaf, NodePtr, OpaqueNodePtr};
