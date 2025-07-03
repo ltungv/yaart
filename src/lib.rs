@@ -127,6 +127,7 @@ impl<K, V, const PARTIAL_LEN: usize> RadixTreeMap<K, V, PARTIAL_LEN> {
     }
 
     /// Gets the first key-value pair from the map.
+    #[must_use]
     pub fn first_key_value(&self) -> Option<(&K, &V)>
     where
         K: OrderedBytesRepr,
@@ -138,6 +139,7 @@ impl<K, V, const PARTIAL_LEN: usize> RadixTreeMap<K, V, PARTIAL_LEN> {
     }
 
     /// Gets the last key-value pair from the map.
+    #[must_use]
     pub fn last_key_value(&self) -> Option<(&K, &V)>
     where
         K: OrderedBytesRepr,
