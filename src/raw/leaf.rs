@@ -21,10 +21,7 @@ where
     V: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Leaf")
-            .field("key", &self.key.repr())
-            .field("value", &self.value)
-            .finish()
+        f.debug_struct("Leaf").field("key", &self.key.repr()).field("value", &self.value).finish()
     }
 }
 

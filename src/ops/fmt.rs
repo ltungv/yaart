@@ -8,10 +8,7 @@ use crate::{
 pub struct Fmt<K, V, const PARTIAL_LEN: usize>(PhantomData<(K, V)>);
 
 impl<K, V, const PARTIAL_LEN: usize> Fmt<K, V, PARTIAL_LEN> {
-    pub unsafe fn debug(
-        root: OpaqueNodePtr<K, V, PARTIAL_LEN>,
-        f: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result
+    pub unsafe fn debug(root: OpaqueNodePtr<K, V, PARTIAL_LEN>, f: &mut fmt::Formatter<'_>) -> fmt::Result
     where
         K: BytesRepr,
         V: fmt::Debug,
@@ -33,11 +30,7 @@ impl<K, V, const PARTIAL_LEN: usize> Fmt<K, V, PARTIAL_LEN> {
             for (key, ptr) in inner.iter().rev() {
                 stack.push((height + 1, key, ptr));
             }
-            writeln!(
-                f,
-                "{indent} {partial_key:0>3} --> {:?}",
-                inner.header().path
-            )
+            writeln!(f, "{indent} {partial_key:0>3} --> {:?}", inner.header().path)
         }
 
         let mut stack = Vec::new();

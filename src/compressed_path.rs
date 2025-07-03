@@ -35,10 +35,7 @@ pub struct CompressedPath<const PARTIAL_LEN: usize> {
 
 impl<const PARTIAL_LEN: usize> Default for CompressedPath<PARTIAL_LEN> {
     fn default() -> Self {
-        Self {
-            prefix_len: 0,
-            partial: [0; PARTIAL_LEN],
-        }
+        Self { prefix_len: 0, partial: [0; PARTIAL_LEN] }
     }
 }
 
@@ -62,10 +59,7 @@ impl<const PARTIAL_LEN: usize> CompressedPath<PARTIAL_LEN> {
     /// Creates a new partial key from the given key and prefix length. We only copy at most N
     /// bytes from the key to fill the data array.
     pub fn new(key: &[u8], prefix_len: usize) -> Self {
-        let mut path = Self {
-            prefix_len,
-            partial: [0; PARTIAL_LEN],
-        };
+        let mut path = Self { prefix_len, partial: [0; PARTIAL_LEN] };
         let partial_len = path.partial_prefix_len();
         path.partial[..partial_len].copy_from_slice(&key[..partial_len]);
         path
@@ -85,6 +79,13 @@ impl<const PARTIAL_LEN: usize> CompressedPath<PARTIAL_LEN> {
 
     pub fn as_partial_prefix(&self) -> &[u8] {
         &self.partial[..self.partial_prefix_len()]
+    }
+
+    pub fn append(&mut self, prefix: &[u8], len: usize) {
+        let offset = self.partial_prefix_len();
+        let length = len.min(PARTIAL_LEN - offset);
+        self.prefix_len += len;
+        self.partial[offset..offset + length].copy_from_slice(&prefix[..length]);
     }
 
     pub fn shift(&mut self, shift: usize) {

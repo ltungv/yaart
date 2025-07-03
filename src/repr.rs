@@ -120,36 +120,15 @@ mod tests {
         // numeric arrays
         assert_eq!(
             [26343u16, 0, u16::MAX].repr().as_ref(),
-            &[
-                26343u16.to_ne_bytes()[0],
-                26343u16.to_ne_bytes()[1],
-                0,
-                0,
-                255,
-                255
-            ]
+            &[26343u16.to_ne_bytes()[0], 26343u16.to_ne_bytes()[1], 0, 0, 255, 255]
         );
         assert_eq!(
             Box::<[u16]>::from([26343u16, 0, u16::MAX]).repr().as_ref(),
-            &[
-                26343u16.to_ne_bytes()[0],
-                26343u16.to_ne_bytes()[1],
-                0,
-                0,
-                255,
-                255
-            ]
+            &[26343u16.to_ne_bytes()[0], 26343u16.to_ne_bytes()[1], 0, 0, 255, 255]
         );
         assert_eq!(
             Vec::<u16>::from([26343u16, 0, u16::MAX]).repr().as_ref(),
-            &[
-                26343u16.to_ne_bytes()[0],
-                26343u16.to_ne_bytes()[1],
-                0,
-                0,
-                255,
-                255
-            ]
+            &[26343u16.to_ne_bytes()[0], 26343u16.to_ne_bytes()[1], 0, 0, 255, 255]
         );
     }
 }

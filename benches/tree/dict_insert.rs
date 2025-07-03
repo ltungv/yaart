@@ -17,15 +17,8 @@ fn insert(words: Vec<String>) -> RadixTreeMap<String, usize> {
 fn bench(c: &mut Criterion) {
     let mut rng = StdRng::seed_from_u64(69420);
     let words = include_str!("../data/medium-dict.txt");
-    let mut bytes = 0;
-    let mut words: Vec<_> = words
-        .lines()
-        .map(|s| {
-            let s = String::from(s);
-            bytes += s.len();
-            s
-        })
-        .collect();
+    let mut words: Vec<_> = words.lines().map(String::from).collect();
+    let bytes = words.iter().map(String::len).sum::<usize>();
 
     words.dedup();
     words.sort();
@@ -49,47 +42,20 @@ fn bench(c: &mut Criterion) {
     {
         let mut group = c.benchmark_group("dict/words/full");
         group.throughput(criterion::Throughput::Bytes(bytes as u64));
-        group.bench_function("insert/asc", |b| {
-            b.iter_batched(|| words.clone(), insert, criterion::BatchSize::SmallInput)
-        });
-        group.bench_function("insert/desc", |b| {
-            b.iter_batched(
-                || rev_words.clone(),
-                insert,
-                criterion::BatchSize::SmallInput,
-            )
-        });
-        group.bench_function("insert/rand", |b| {
-            b.iter_batched(
-                || rand_words.clone(),
-                insert,
-                criterion::BatchSize::SmallInput,
-            )
-        });
+        group.bench_function("insert/asc", |b| b.iter_batched(|| words.clone(), insert, criterion::BatchSize::SmallInput));
+        group.bench_function("insert/desc", |b| b.iter_batched(|| rev_words.clone(), insert, criterion::BatchSize::SmallInput));
+        group
+            .bench_function("insert/rand", |b| b.iter_batched(|| rand_words.clone(), insert, criterion::BatchSize::SmallInput));
     }
     {
         let mut group = c.benchmark_group("dict/words/part");
         group.throughput(criterion::Throughput::Bytes(part_bytes as u64));
-        group.bench_function("insert/asc", |b| {
-            b.iter_batched(
-                || part_words.clone(),
-                insert,
-                criterion::BatchSize::SmallInput,
-            )
-        });
+        group.bench_function("insert/asc", |b| b.iter_batched(|| part_words.clone(), insert, criterion::BatchSize::SmallInput));
         group.bench_function("insert/desc", |b| {
-            b.iter_batched(
-                || rev_part_words.clone(),
-                insert,
-                criterion::BatchSize::SmallInput,
-            )
+            b.iter_batched(|| rev_part_words.clone(), insert, criterion::BatchSize::SmallInput)
         });
         group.bench_function("insert/rand", |b| {
-            b.iter_batched(
-                || rand_part_words.clone(),
-                insert,
-                criterion::BatchSize::SmallInput,
-            )
+            b.iter_batched(|| rand_part_words.clone(), insert, criterion::BatchSize::SmallInput)
         });
     }
 }

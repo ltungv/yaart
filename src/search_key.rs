@@ -48,26 +48,19 @@ impl<'a> SearchKey<'a> {
     /// Returns a new search key whose slice starts from the given index.
     #[must_use]
     pub fn shift(self, index: usize) -> Self {
-        SearchKey {
-            elems: &self.elems[index..],
-        }
+        SearchKey { elems: &self.elems[index..] }
     }
 
     /// Returns a new search key whose slice starts from the given index and has the given length.
     #[must_use]
     pub fn range(self, index: usize, len: usize) -> Self {
-        SearchKey {
-            elems: &self.elems[index..index + len],
-        }
+        SearchKey { elems: &self.elems[index..index + len] }
     }
 
     /// Returns the length of the common prefix between two [`SearchKey`]s.
     #[must_use]
     pub fn common_prefix_len(self, other: SearchKey<'_>) -> usize {
-        self.into_iter()
-            .zip(other)
-            .take_while(|(x, y)| x == y)
-            .count()
+        self.into_iter().zip(other).take_while(|(x, y)| x == y).count()
     }
 }
 

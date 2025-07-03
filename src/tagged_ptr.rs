@@ -60,10 +60,7 @@ impl<P, const TAG_BITS: u32> PartialEq for TaggedPtr<P, TAG_BITS> {
 
 impl<P, const TAG_BITS: u32> fmt::Debug for TaggedPtr<P, TAG_BITS> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TaggedPtr")
-            .field("ptr", &self.as_ptr())
-            .field("tags", &self.as_tags())
-            .finish()
+        f.debug_struct("TaggedPtr").field("ptr", &self.as_ptr()).field("tags", &self.as_tags()).finish()
     }
 }
 
@@ -101,18 +98,13 @@ impl<P, const TAG_BITS: u32> TaggedPtr<P, TAG_BITS> {
     /// Returns a tagged pointer based on the given raw pointer without checking if it is null.
     pub unsafe fn new_unchecked(pointer: *mut P) -> Self {
         let unchecked_ptr = unsafe { NonNull::new_unchecked(pointer) };
-        assert_eq!(
-            unchecked_ptr.addr().get() & Self::MARK_TAGS,
-            0,
-            "unaligned pointer"
-        );
+        assert_eq!(unchecked_ptr.addr().get() & Self::MARK_TAGS, 0, "unaligned pointer");
         Self(unchecked_ptr)
     }
 
     /// Gets a normalized pointer from the tagged pointer.
     pub fn as_ptr(self) -> NonNull<P> {
-        self.0
-            .map_addr(|addr| unsafe { NonZeroUsize::new_unchecked(addr.get() & Self::MASK_PTR) })
+        self.0.map_addr(|addr| unsafe { NonZeroUsize::new_unchecked(addr.get() & Self::MASK_PTR) })
     }
 
     /// Gets the tags from the tagged pointer.
@@ -124,9 +116,7 @@ impl<P, const TAG_BITS: u32> TaggedPtr<P, TAG_BITS> {
     pub fn tags(&mut self, tags: usize) {
         assert_eq!(tags & Self::MASK_PTR, 0, "overflowing tags");
         let tags = tags & Self::MARK_TAGS;
-        self.0 = self.0.map_addr(|addr| unsafe {
-            NonZeroUsize::new_unchecked(addr.get() & Self::MASK_PTR) | tags
-        });
+        self.0 = self.0.map_addr(|addr| unsafe { NonZeroUsize::new_unchecked(addr.get() & Self::MASK_PTR) | tags });
     }
 
     /// Casts to a pointer of another type.
@@ -142,8 +132,7 @@ mod tests {
     #[test]
     fn it_works() {
         let mut pointee = "Hello world!";
-        let mut tagged_ptr =
-            TaggedPtr::<&str, 3>::new(&raw mut pointee).expect("pointer is not null");
+        let mut tagged_ptr = TaggedPtr::<&str, 3>::new(&raw mut pointee).expect("pointer is not null");
 
         // First tags.
         tagged_ptr.tags(0b101);
@@ -160,18 +149,9 @@ mod tests {
         ($name:ident,$T:ty,$tag_bits:expr) => {
             #[test]
             fn $name() {
-                assert_eq!(
-                    TaggedPtr::<$T, $tag_bits>::ALIGNMENT,
-                    std::mem::align_of::<$T>()
-                );
-                assert_eq!(
-                    TaggedPtr::<$T, $tag_bits>::FREE_BITS,
-                    std::mem::align_of::<$T>().trailing_zeros()
-                );
-                assert_eq!(
-                    TaggedPtr::<$T, $tag_bits>::MASK_PTR,
-                    usize::MAX << std::mem::align_of::<$T>().trailing_zeros()
-                );
+                assert_eq!(TaggedPtr::<$T, $tag_bits>::ALIGNMENT, std::mem::align_of::<$T>());
+                assert_eq!(TaggedPtr::<$T, $tag_bits>::FREE_BITS, std::mem::align_of::<$T>().trailing_zeros());
+                assert_eq!(TaggedPtr::<$T, $tag_bits>::MASK_PTR, usize::MAX << std::mem::align_of::<$T>().trailing_zeros());
             }
         };
     }
@@ -182,8 +162,7 @@ mod tests {
             #[test]
             fn $name() {
                 let mut pointee = <$T>::default();
-                let mut tagged_ptr =
-                    TaggedPtr::<_, $tag_bits>::new(&raw mut pointee).expect("pointer is not null");
+                let mut tagged_ptr = TaggedPtr::<_, $tag_bits>::new(&raw mut pointee).expect("pointer is not null");
 
                 let free_bits = std::mem::align_of::<$T>().trailing_zeros();
                 tagged_ptr.tags(usize::MAX >> (usize::BITS - free_bits - 1));
@@ -196,15 +175,10 @@ mod tests {
             #[test]
             fn $name() {
                 let mut pointee = <$T>::default();
-                let mut tagged_ptr =
-                    TaggedPtr::<_, $tag_bits>::new(&raw mut pointee).expect("pointer is not null");
+                let mut tagged_ptr = TaggedPtr::<_, $tag_bits>::new(&raw mut pointee).expect("pointer is not null");
 
                 let free_bits = std::mem::align_of::<$T>().trailing_zeros();
-                let tags = if free_bits == 0 {
-                    0
-                } else {
-                    usize::MAX >> (usize::BITS - free_bits)
-                };
+                let tags = if free_bits == 0 { 0 } else { usize::MAX >> (usize::BITS - free_bits) };
                 tagged_ptr.tags(tags);
                 assert_eq!(tagged_ptr.as_tags(), tags,);
                 assert_eq!(unsafe { &*tagged_ptr.as_ptr().as_ptr() }, &pointee);

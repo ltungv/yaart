@@ -6,6 +6,7 @@ use rand::{
     Rng, SeedableRng,
 };
 
+#[must_use]
 pub fn get_samples(
     seed: u64,
     prefix_count: usize,
@@ -17,11 +18,7 @@ where
     StandardUniform: Distribution<u64>,
 {
     let random_string = |seed: u64, size: usize| {
-        rand::rngs::StdRng::seed_from_u64(seed)
-            .sample_iter(Alphanumeric)
-            .map(char::from)
-            .take(size)
-            .collect::<String>()
+        rand::rngs::StdRng::seed_from_u64(seed).sample_iter(Alphanumeric).map(char::from).take(size).collect::<String>()
     };
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
     let mut keys = Vec::new();

@@ -22,39 +22,55 @@ fn main() {
         }
     }
 
-    let mut m = RadixTreeMap::<String, usize, 4>::new();
+    let mut radix = RadixTreeMap::<String, usize, 4>::new();
     {
         let start = Instant::now();
-        assert!(m.is_empty());
+        assert!(radix.is_empty());
         for (i, w) in words.clone().into_iter().enumerate() {
-            assert!(m.insert(w, i).is_none());
+            assert!(radix.insert(w, i).is_none());
         }
         println!("INSERT (ART) {:?}", start.elapsed());
     };
     {
         let start = Instant::now();
-        assert_eq!(m.len(), words.len());
+        assert_eq!(radix.len(), words.len());
         for (i, w) in words.iter().enumerate() {
-            assert_eq!(m.get(w), Some(&i));
+            assert_eq!(radix.get(w), Some(&i));
         }
-        println!("LOOKUP (ART) {:?}", start.elapsed());
+        println!("SEARCH (ART) {:?}", start.elapsed());
     }
-
-    let mut b = BTreeMap::new();
     {
         let start = Instant::now();
-        assert!(b.is_empty());
+        for (i, w) in words.iter().enumerate() {
+            assert_eq!(radix.remove(w), Some(i));
+        }
+        assert!(radix.is_empty());
+        println!("DELETE (ART) {:?}", start.elapsed());
+    }
+
+    let mut btree = BTreeMap::new();
+    {
+        let start = Instant::now();
+        assert!(btree.is_empty());
         for (i, w) in words.clone().into_iter().enumerate() {
-            assert!(b.insert(w, i).is_none());
+            assert!(btree.insert(w, i).is_none());
         }
         println!("INSERT (BTREE) {:?}", start.elapsed());
     };
     {
         let start = Instant::now();
-        assert_eq!(b.len(), words.len());
+        assert_eq!(btree.len(), words.len());
         for (i, w) in words.iter().enumerate() {
-            assert_eq!(b.get(w), Some(&i));
+            assert_eq!(btree.get(w), Some(&i));
         }
-        println!("LOOKUP (BTREE) {:?}", start.elapsed());
+        println!("SEARCH (BTREE) {:?}", start.elapsed());
+    }
+    {
+        let start = Instant::now();
+        for (i, w) in words.iter().enumerate() {
+            assert_eq!(btree.remove(w), Some(i));
+        }
+        assert!(btree.is_empty());
+        println!("DELETE (BTREE) {:?}", start.elapsed());
     }
 }

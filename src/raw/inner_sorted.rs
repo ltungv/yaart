@@ -12,10 +12,7 @@ pub struct InnerSorted<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize
     pub(crate) ptrs: [MaybeUninit<OpaqueNodePtr<K, V, PARTIAL_LEN>>; NUM_CHILDREN],
 }
 
-impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize> Sealed
-    for InnerSorted<K, V, PARTIAL_LEN, NUM_CHILDREN>
-{
-}
+impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize> Sealed for InnerSorted<K, V, PARTIAL_LEN, NUM_CHILDREN> {}
 
 impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize> From<Header<PARTIAL_LEN>>
     for InnerSorted<K, V, PARTIAL_LEN, NUM_CHILDREN>
@@ -37,11 +34,7 @@ impl<'a, K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize> IntoIterator
     type IntoIter = InnerSortedIter<'a, K, V, PARTIAL_LEN, NUM_CHILDREN>;
 
     fn into_iter(self) -> Self::IntoIter {
-        Self::IntoIter {
-            offset: 0,
-            length: self.header.children as usize,
-            inner: self,
-        }
+        Self::IntoIter { offset: 0, length: self.header.children as usize, inner: self }
     }
 }
 
@@ -166,9 +159,7 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for InnerSorted<K, V, PA
     }
 }
 
-impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize>
-    InnerSorted<K, V, PARTIAL_LEN, NUM_CHILDREN>
-{
+impl<K, V, const PARTIAL_LEN: usize, const NUM_CHILDREN: usize> InnerSorted<K, V, PARTIAL_LEN, NUM_CHILDREN> {
     fn keys(&self) -> &[u8] {
         let keys = &self.keys[..self.header.children as usize];
         let base_ptr = keys.as_ptr().cast::<u8>();

@@ -76,17 +76,10 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
     fn header(&self) -> &Header<PARTIAL_LEN>;
 
     /// Adds a child pointer with a key partial to this node.
-    fn add(
-        &mut self,
-        partial_key: u8,
-        child_ptr: OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>,
-    );
+    fn add(&mut self, partial_key: u8, child_ptr: OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>);
 
     /// Deletes a child pointer at the key partial from this node.
-    fn del(
-        &mut self,
-        partial_key: u8,
-    ) -> Option<OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>>;
+    fn del(&mut self, partial_key: u8) -> Option<OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>>;
 
     /// Gets a child pointer that corresponds to the given key partial.
     fn get(&self, partial_key: u8) -> Option<OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>>;
@@ -98,21 +91,37 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
     fn max(&self) -> (u8, OpaqueNodePtr<Self::Key, Self::Value, PARTIAL_LEN>);
 
     fn is_full(&self) -> bool {
+        let children_max = match Self::TYPE {
+            NodeType::Leaf => unreachable!("invalid inner node type"),
+            NodeType::Inner4 => 4,
+            NodeType::Inner16 => 16,
+            NodeType::Inner48 => 48,
+            NodeType::Inner256 => 256,
+        };
+        self.header().children == children_max
+    }
+
+    fn is_singleton(&self) -> bool {
         match Self::TYPE {
             NodeType::Leaf => unreachable!("invalid inner node type"),
-            NodeType::Inner4 => self.header().children >= 4,
-            NodeType::Inner16 => self.header().children >= 16,
-            NodeType::Inner48 => self.header().children >= 48,
-            NodeType::Inner256 => self.header().children >= 256,
+            _ => self.header().children == 1,
         }
+    }
+
+    fn is_shrinkable(&self) -> bool {
+        let children_threshold = match Self::TYPE {
+            NodeType::Leaf => unreachable!("invalid inner node type"),
+            NodeType::Inner4 => 1,
+            NodeType::Inner16 => 4,
+            NodeType::Inner48 => 16,
+            NodeType::Inner256 => 48,
+        };
+        self.header().children <= children_threshold
     }
 
     /// Reads the full prefix of this node, and searches a descendant leaf node to find implicit
     /// bytes if necessary.
-    fn read_full_prefix(
-        &self,
-        current_depth: usize,
-    ) -> (SearchKey<'_>, Option<NodePtr<Leaf<Self::Key, Self::Value>>>)
+    fn read_full_prefix(&self, current_depth: usize) -> (SearchKey<'_>, Option<NodePtr<Leaf<Self::Key, Self::Value>>>)
     where
         Self::Key: BytesRepr,
     {
@@ -124,10 +133,7 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
             // Find the minimum leaf which is guaranteed to have the full prefix of this node.
             let leaf_ptr = unsafe { Search::minimum(self.min().1) };
             let leaf = unsafe { leaf_ptr.as_ref() };
-            let prefix = leaf
-                .key
-                .repr()
-                .range(current_depth, header.path.prefix_len());
+            let prefix = leaf.key.repr().range(current_depth, header.path.prefix_len());
             (prefix, Some(leaf_ptr))
         }
     }
@@ -152,11 +158,7 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
 
         if prefix_len < prefix.len() {
             // The common prefix with the seach key is shorter than the actual prefix.
-            return Err(FullPrefixMismatch {
-                prefix_len,
-                mismatched: prefix[prefix_len],
-                leaf,
-            });
+            return Err(FullPrefixMismatch { prefix_len, mismatched: prefix[prefix_len], leaf });
         }
         Ok(prefix_len)
     }
@@ -186,10 +188,7 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
         let key_len = key.len();
         let prefix_len = self.header().path.prefix_len();
         if key_len < prefix_len {
-            return Err(PrefixMismatch {
-                prefix_len: key_len,
-                mismatched: None,
-            });
+            return Err(PrefixMismatch { prefix_len: key_len, mismatched: None });
         }
         Ok(prefix_len)
     }
@@ -201,10 +200,7 @@ pub trait Inner<const PARTIAL_LEN: usize>: Node<PARTIAL_LEN> {
         let partial_prefix = SearchKey::new(self.header().path.as_partial_prefix());
         let prefix_len = partial_prefix.common_prefix_len(key);
         if prefix_len < self.header().path.prefix_len() {
-            return Err(PrefixMismatch {
-                prefix_len,
-                mismatched: Some(partial_prefix[prefix_len]),
-            });
+            return Err(PrefixMismatch { prefix_len, mismatched: Some(partial_prefix[prefix_len]) });
         }
         Ok(prefix_len)
     }

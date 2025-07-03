@@ -1,15 +1,17 @@
-mod ptr;
+mod delete;
 mod fmt;
 mod insert;
+mod ptr;
 mod search;
 
 use crate::raw::NodePtr;
 
 use super::raw::{ConcreteInnerNodePtr, Leaf};
 
-pub use ptr::*;
+pub use delete::*;
 pub use fmt::*;
 pub use insert::*;
+pub use ptr::*;
 pub use search::*;
 
 /// A branch determines the origin of a node in the tree consisting of a pointer to the node's

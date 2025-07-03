@@ -16,11 +16,7 @@ impl<K, V, const PARTIAL_LEN: usize> Sealed for Inner48<K, V, PARTIAL_LEN> {}
 
 impl<K, V, const PARTIAL_LEN: usize> From<Header<PARTIAL_LEN>> for Inner48<K, V, PARTIAL_LEN> {
     fn from(header: Header<PARTIAL_LEN>) -> Self {
-        Self {
-            header,
-            keys: [RestrictedIndex::EMPTY; 256],
-            ptrs: unsafe { MaybeUninit::uninit().assume_init() },
-        }
+        Self { header, keys: [RestrictedIndex::EMPTY; 256], ptrs: unsafe { MaybeUninit::uninit().assume_init() } }
     }
 }
 
@@ -30,11 +26,7 @@ impl<'a, K, V, const PARTIAL_LEN: usize> IntoIterator for &'a Inner48<K, V, PART
     type IntoIter = Inner48Iter<'a, K, V, PARTIAL_LEN>;
 
     fn into_iter(self) -> Self::IntoIter {
-        Self::IntoIter {
-            offset: 0,
-            length: self.header.children as usize,
-            inner: self,
-        }
+        Self::IntoIter { offset: 0, length: self.header.children as usize, inner: self }
     }
 }
 
@@ -98,8 +90,7 @@ impl<K, V, const PARTIAL_LEN: usize> Inner<PARTIAL_LEN> for Inner48<K, V, PARTIA
             let child_index = self.header.children as usize;
             self.header.children += 1;
             self.ptrs[child_index].write(child_ptr);
-            self.keys[partial_key_index] =
-                RestrictedIndex::try_from(child_index).expect("index is within bounds");
+            self.keys[partial_key_index] = RestrictedIndex::try_from(child_index).expect("index is within bounds");
         } else {
             self.ptrs[usize::from(child_index)].write(child_ptr);
         }
@@ -262,10 +253,7 @@ impl<const LIMIT: u8> TryFrom<u8> for RestrictedIndex<LIMIT> {
         if value < LIMIT {
             Ok(Self(value))
         } else {
-            Err(RestrictedIndexError::TryFromByte {
-                limit: LIMIT,
-                value: value as usize,
-            })
+            Err(RestrictedIndexError::TryFromByte { limit: LIMIT, value: value as usize })
         }
     }
 }
@@ -280,10 +268,7 @@ impl<const LIMIT: u8> TryFrom<usize> for RestrictedIndex<LIMIT> {
             #[allow(clippy::cast_possible_truncation)]
             Ok(Self(value as u8))
         } else {
-            Err(RestrictedIndexError::TryFromByte {
-                limit: LIMIT,
-                value,
-            })
+            Err(RestrictedIndexError::TryFromByte { limit: LIMIT, value })
         }
     }
 }

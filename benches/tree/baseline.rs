@@ -1,9 +1,7 @@
 use std::collections::BTreeMap;
 
 use criterion::{criterion_group, Criterion};
-use yaart::RadixTreeMap;
-
-use crate::common::get_samples;
+use yaart::{test_common::get_samples, RadixTreeMap};
 
 fn btree_insert(samples: Vec<String>) -> BTreeMap<String, usize> {
     let mut btree = BTreeMap::new();
@@ -22,11 +20,11 @@ fn radix_insert(samples: Vec<String>) -> RadixTreeMap<String, usize> {
 }
 
 pub fn bench(c: &mut Criterion) {
-    let samples = get_samples(rand::random(), 32, 2..18, 256, 8);
-    let nbytes = samples.iter().map(|s| s.len() as u64).sum();
+    let samples = get_samples(rand::random(), 32, 2..14, 256, 8);
+    let nbytes = samples.iter().map(String::len).sum::<usize>();
     {
         let mut group = c.benchmark_group("baseline/get");
-        group.throughput(criterion::Throughput::Bytes(nbytes));
+        group.throughput(criterion::Throughput::Bytes(nbytes as u64));
         group.bench_function("btree", |b| {
             b.iter_batched(
                 || {
@@ -58,21 +56,9 @@ pub fn bench(c: &mut Criterion) {
     }
     {
         let mut group = c.benchmark_group("baseline/insert");
-        group.throughput(criterion::Throughput::Bytes(nbytes));
-        group.bench_function("btree", |b| {
-            b.iter_batched(
-                || samples.clone(),
-                btree_insert,
-                criterion::BatchSize::SmallInput,
-            )
-        });
-        group.bench_function("radix", |b| {
-            b.iter_batched(
-                || samples.clone(),
-                radix_insert,
-                criterion::BatchSize::SmallInput,
-            )
-        });
+        group.throughput(criterion::Throughput::Bytes(nbytes as u64));
+        group.bench_function("btree", |b| b.iter_batched(|| samples.clone(), btree_insert, criterion::BatchSize::SmallInput));
+        group.bench_function("radix", |b| b.iter_batched(|| samples.clone(), radix_insert, criterion::BatchSize::SmallInput));
     }
 }
 

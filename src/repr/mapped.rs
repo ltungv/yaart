@@ -109,10 +109,7 @@ where
 {
     /// Creates a new container for some decomposed bytes.
     pub const fn with_key(key: M::Key) -> Self {
-        Self {
-            key,
-            _marker: PhantomData,
-        }
+        Self { key, _marker: PhantomData }
     }
 
     /// Decomposes a value into its bytes representation.

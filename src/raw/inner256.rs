@@ -12,10 +12,7 @@ pub struct Inner256<K, V, const PARTIAL_LEN: usize> {
 impl<K, V, const PARTIAL_LEN: usize> Sealed for Inner256<K, V, PARTIAL_LEN> {}
 impl<K, V, const PARTIAL_LEN: usize> From<Header<PARTIAL_LEN>> for Inner256<K, V, PARTIAL_LEN> {
     fn from(header: Header<PARTIAL_LEN>) -> Self {
-        Self {
-            header,
-            ptrs: [None; 256],
-        }
+        Self { header, ptrs: [None; 256] }
     }
 }
 
@@ -25,11 +22,7 @@ impl<'a, K, V, const PARTIAL_LEN: usize> IntoIterator for &'a Inner256<K, V, PAR
     type IntoIter = Inner256Iter<'a, K, V, PARTIAL_LEN>;
 
     fn into_iter(self) -> Self::IntoIter {
-        Self::IntoIter {
-            offset: 0,
-            length: self.header.children as usize,
-            inner: self,
-        }
+        Self::IntoIter { offset: 0, length: self.header.children as usize, inner: self }
     }
 }
 

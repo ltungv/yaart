@@ -9,22 +9,7 @@
     missing_docs
 )]
 #![warn(rustdoc::all, clippy::pedantic, clippy::nursery)]
-#![allow(
-    edition_2024_expr_fragment_specifier,
-    clippy::too_many_lines,
-    clippy::type_complexity
-)]
-
-use std::borrow::Borrow;
-use std::fmt;
-use std::num::NonZeroUsize;
-
-use ops::Fmt;
-use ops::Insert;
-use ops::Ptr;
-use ops::Search;
-use raw::Leaf;
-use raw::OpaqueNodePtr;
+#![allow(edition_2024_expr_fragment_specifier, clippy::too_many_lines, clippy::type_complexity)]
 
 mod compressed_path;
 mod ops;
@@ -33,7 +18,15 @@ mod repr;
 mod search_key;
 mod tagged_ptr;
 
-use raw::NodePtr;
+#[doc(hidden)]
+pub mod test_common;
+
+use std::borrow::Borrow;
+use std::fmt;
+use std::num::NonZeroUsize;
+
+use ops::{Delete, Fmt, Insert, Ptr, Search};
+use raw::{Leaf, NodePtr, OpaqueNodePtr};
 
 pub use repr::*;
 pub use search_key::*;
@@ -44,7 +37,17 @@ trait Sealed {}
 
 /// An ordered map backed by an adaptive radix tree.
 pub struct RadixTreeMap<K, V, const PARTIAL_LEN: usize = 8> {
-    state: Option<NonEmptyRadixTree<K, V, PARTIAL_LEN>>,
+    state: Option<NonEmptyRadixTreeMap<K, V, PARTIAL_LEN>>,
+}
+
+impl<K, V, const PARTIAL_LEN: usize> Drop for RadixTreeMap<K, V, PARTIAL_LEN> {
+    fn drop(&mut self) {
+        if let Some(state) = &self.state {
+            unsafe {
+                Ptr::dealloc(state.root);
+            }
+        }
+    }
 }
 
 impl<K, V, const PARTIAL_LEN: usize> Default for RadixTreeMap<K, V, PARTIAL_LEN> {
@@ -82,7 +85,38 @@ impl<K, V, const PARTIAL_LEN: usize> RadixTreeMap<K, V, PARTIAL_LEN> {
     /// Returns the number of existing entries in the map.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.state.as_ref().map_or(0, NonEmptyRadixTree::len)
+        self.state.as_ref().map_or(0, NonEmptyRadixTreeMap::len)
+    }
+
+    /// Inserts a key-value pair into the map.
+    pub fn insert(&mut self, key: K, value: V) -> Option<V>
+    where
+        K: BytesRepr,
+    {
+        let Some(state) = &mut self.state else {
+            self.state = Some(NonEmptyRadixTreeMap::new(Leaf::new(key, value)));
+            return None;
+        };
+        state.insert(key, value)
+    }
+
+    /// Removes a key-value pari from the map given the key.
+    pub fn remove<Q>(&mut self, key: &Q) -> Option<V>
+    where
+        K: BytesRepr + Borrow<Q>,
+        Q: BytesRepr + ?Sized,
+    {
+        let Some(state) = &mut self.state else {
+            return None;
+        };
+        match state.remove(key) {
+            Removal::None => None,
+            Removal::Some(v) => Some(v),
+            Removal::Last(v) => {
+                self.state = None;
+                Some(v)
+            }
+        }
     }
 
     /// Gets a key-value pair from the map given the key.
@@ -93,40 +127,23 @@ impl<K, V, const PARTIAL_LEN: usize> RadixTreeMap<K, V, PARTIAL_LEN> {
     {
         self.state.as_ref().and_then(|s| s.get(key))
     }
+}
 
-    /// Inserts a key-value pair into the map.
-    pub fn insert(&mut self, key: K, value: V) -> Option<V>
-    where
-        K: BytesRepr,
-    {
-        let Some(state) = &mut self.state else {
-            self.state = Some(NonEmptyRadixTree::new(Leaf::new(key, value)));
-            return None;
-        };
-        state.insert(key, value)
-    }
+enum Removal<T> {
+    None,
+    Some(T),
+    Last(T),
 }
 
 #[derive(Debug)]
-struct NonEmptyRadixTree<K, V, const PARTIAL_LEN: usize> {
+struct NonEmptyRadixTreeMap<K, V, const PARTIAL_LEN: usize> {
     len: NonZeroUsize,
     root: OpaqueNodePtr<K, V, PARTIAL_LEN>,
 }
 
-impl<K, V, const PARTIAL_LEN: usize> Drop for NonEmptyRadixTree<K, V, PARTIAL_LEN> {
-    fn drop(&mut self) {
-        unsafe {
-            Ptr::dealloc(self.root);
-        }
-    }
-}
-
-impl<K, V, const PARTIAL_LEN: usize> NonEmptyRadixTree<K, V, PARTIAL_LEN> {
+impl<K, V, const PARTIAL_LEN: usize> NonEmptyRadixTreeMap<K, V, PARTIAL_LEN> {
     fn new(leaf: Leaf<K, V>) -> Self {
-        Self {
-            len: unsafe { NonZeroUsize::new_unchecked(1) },
-            root: NodePtr::alloc(leaf).as_opaque(),
-        }
+        Self { len: unsafe { NonZeroUsize::new_unchecked(1) }, root: NodePtr::alloc(leaf).as_opaque() }
     }
 
     fn len(&self) -> usize {
@@ -146,6 +163,29 @@ impl<K, V, const PARTIAL_LEN: usize> NonEmptyRadixTree<K, V, PARTIAL_LEN> {
         inserted.prev.map(|l| l.value)
     }
 
+    fn remove<Q>(&mut self, key: &Q) -> Removal<V>
+    where
+        K: BytesRepr + Borrow<Q>,
+        Q: BytesRepr + ?Sized,
+    {
+        let Some(delete) = (unsafe { Delete::prepare(self.root, key.repr()) }) else {
+            // No leaf was found with a matching key so nothing is removed.
+            return Removal::None;
+        };
+        let deleted = unsafe { delete.apply(self.root) };
+        let Some(root) = deleted.root else {
+            // The root was removed after the deletion.
+            assert_eq!(self.len(), 1);
+            return Removal::Last(deleted.leaf.value);
+        };
+        // The root was retained or updated after the deletion.
+        assert_ne!(self.len(), 1);
+        let new_len = self.len() - 1;
+        self.len = NonZeroUsize::new(new_len).expect("index is non-zero");
+        self.root = root;
+        Removal::Some(deleted.leaf.value)
+    }
+
     fn get<Q>(&self, key: &Q) -> Option<&V>
     where
         K: BytesRepr + Borrow<Q>,
@@ -159,31 +199,28 @@ impl<K, V, const PARTIAL_LEN: usize> NonEmptyRadixTree<K, V, PARTIAL_LEN> {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_common::get_samples;
+
     use super::RadixTreeMap;
 
-    #[cfg_attr(miri, ignore)]
     #[test]
-    fn test() {
-        let words = include_str!("../benches/data/medium-dict.txt");
-        let mut bytes = 0;
-        let mut words: Vec<_> = words
-            .lines()
-            .map(|s| {
-                let s = String::from(s);
-                bytes += s.len();
-                s
-            })
-            .collect();
-
-        words.dedup();
-        words.sort();
-
+    fn it_works() {
+        let samples = get_samples(rand::random(), 4, 2..14, 4, 8);
         let mut art = RadixTreeMap::<String, usize>::new();
-        for (idx, word) in words.clone().into_iter().enumerate() {
+
+        assert!(art.is_empty());
+        for (idx, word) in samples.clone().into_iter().enumerate() {
             art.insert(word, idx);
         }
-        for (idx, word) in words.into_iter().enumerate() {
-            assert_eq!(art.get(&word), Some(&idx));
+
+        assert_eq!(art.len(), samples.len());
+        for (idx, word) in samples.iter().enumerate() {
+            assert_eq!(art.get(word), Some(&idx));
         }
+
+        for (idx, word) in samples.iter().enumerate() {
+            assert_eq!(art.remove(word), Some(idx));
+        }
+        assert!(art.is_empty());
     }
 }
