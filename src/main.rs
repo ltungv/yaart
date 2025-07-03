@@ -5,7 +5,7 @@ use std::{
     time::Instant,
 };
 
-use yaart::RadixTreeMap;
+use yaart::{Mapped, RadixTreeMap, ToBigEndian};
 
 fn main() {
     let path = std::env::args().nth(1).unwrap();
@@ -22,7 +22,7 @@ fn main() {
         }
     }
 
-    let mut radix = RadixTreeMap::<String, usize, 4>::new();
+    let mut radix = RadixTreeMap::<String, usize>::new();
     {
         let start = Instant::now();
         assert!(radix.is_empty());
@@ -38,6 +38,8 @@ fn main() {
             assert_eq!(radix.get(w), Some(&i));
         }
         println!("SEARCH (ART) {:?}", start.elapsed());
+        println!("-- {:?}", radix.first_key_value());
+        println!("-- {:?}", radix.last_key_value());
     }
     {
         let start = Instant::now();
@@ -46,6 +48,8 @@ fn main() {
         }
         assert!(radix.is_empty());
         println!("DELETE (ART) {:?}", start.elapsed());
+        println!("-- {:?}", radix.first_key_value());
+        println!("-- {:?}", radix.last_key_value());
     }
 
     let mut btree = BTreeMap::new();
@@ -64,6 +68,8 @@ fn main() {
             assert_eq!(btree.get(w), Some(&i));
         }
         println!("SEARCH (BTREE) {:?}", start.elapsed());
+        println!("-- {:?}", btree.first_key_value());
+        println!("-- {:?}", btree.last_key_value());
     }
     {
         let start = Instant::now();
@@ -72,5 +78,18 @@ fn main() {
         }
         assert!(btree.is_empty());
         println!("DELETE (BTREE) {:?}", start.elapsed());
+        println!("-- {:?}", btree.first_key_value());
+        println!("-- {:?}", btree.last_key_value());
+    }
+
+    {
+        let mut radix = RadixTreeMap::<Mapped<ToBigEndian, i16>, usize>::new();
+        for (i, w) in (i16::MIN..=i16::MAX).enumerate() {
+            assert!(radix.insert(Mapped::decompose(w), i).is_none());
+        }
+        println!("-- {:?}", radix.first_key_value());
+        println!("-- {:?}", radix.last_key_value());
+        assert_eq!(radix.first_key_value(), Some((&Mapped::decompose(i16::MIN), &0)));
+        assert_eq!(radix.last_key_value(), Some((&Mapped::decompose(i16::MAX), &((1 << 16) - 1))));
     }
 }

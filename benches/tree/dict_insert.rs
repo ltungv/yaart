@@ -16,8 +16,7 @@ fn insert(words: Vec<String>) -> RadixTreeMap<String, usize> {
 
 fn bench(c: &mut Criterion) {
     let mut rng = StdRng::seed_from_u64(69420);
-    let words = include_str!("../data/medium-dict.txt");
-    let mut words: Vec<_> = words.lines().map(String::from).collect();
+    let mut words: Vec<_> = include_str!("../data/medium-dict.txt").lines().map(String::from).collect();
     let bytes = words.iter().map(String::len).sum::<usize>();
 
     words.dedup();

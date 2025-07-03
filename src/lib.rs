@@ -127,6 +127,28 @@ impl<K, V, const PARTIAL_LEN: usize> RadixTreeMap<K, V, PARTIAL_LEN> {
     {
         self.state.as_ref().and_then(|s| s.get(key))
     }
+
+    /// Gets the first key-value pair from the map.
+    pub fn first_key_value(&self) -> Option<(&K, &V)>
+    where
+        K: OrderedBytesRepr,
+    {
+        self.state.as_ref().map(|s| {
+            let leaf = s.first();
+            (&leaf.key, &leaf.value)
+        })
+    }
+
+    /// Gets the last key-value pair from the map.
+    pub fn last_key_value(&self) -> Option<(&K, &V)>
+    where
+        K: OrderedBytesRepr,
+    {
+        self.state.as_ref().map(|s| {
+            let leaf = s.last();
+            (&leaf.key, &leaf.value)
+        })
+    }
 }
 
 enum Removal<T> {
@@ -195,6 +217,22 @@ impl<K, V, const PARTIAL_LEN: usize> NonEmptyRadixTreeMap<K, V, PARTIAL_LEN> {
         let leaf = unsafe { leaf_ptr.as_ref() };
         Some(&leaf.value)
     }
+
+    fn first(&self) -> &Leaf<K, V>
+    where
+        K: OrderedBytesRepr,
+    {
+        let leaf_ptr = unsafe { Search::minimum(self.root) };
+        unsafe { leaf_ptr.as_ref() }
+    }
+
+    fn last(&self) -> &Leaf<K, V>
+    where
+        K: OrderedBytesRepr,
+    {
+        let leaf_ptr = unsafe { Search::maximum(self.root) };
+        unsafe { leaf_ptr.as_ref() }
+    }
 }
 
 #[cfg(test)]
@@ -219,6 +257,28 @@ mod tests {
         }
 
         for (idx, word) in samples.iter().enumerate() {
+            assert_eq!(art.remove(word), Some(idx));
+        }
+        assert!(art.is_empty());
+    }
+
+    #[cfg_attr(miri, ignore)]
+    #[test]
+    fn dict() {
+        let words: Vec<_> = include_str!("../benches/data/dict.txt").lines().map(String::from).collect();
+        let mut art = RadixTreeMap::<String, usize>::new();
+
+        assert!(art.is_empty());
+        for (idx, word) in words.clone().into_iter().enumerate() {
+            art.insert(word, idx);
+        }
+
+        assert_eq!(art.len(), words.len());
+        for (idx, word) in words.iter().enumerate() {
+            assert_eq!(art.get(word), Some(&idx));
+        }
+
+        for (idx, word) in words.iter().enumerate() {
             assert_eq!(art.remove(word), Some(idx));
         }
         assert!(art.is_empty());

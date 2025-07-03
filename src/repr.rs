@@ -51,6 +51,12 @@ macro_rules! impl_bytes_repr_for_integer {
             }
         }
 
+        impl BytesRepr for Box<[$T]> {
+            fn repr(&self) -> SearchKey<'_> {
+                bytemuck::cast_slice(self).into()
+            }
+        }
+
         impl<const N: usize> BytesRepr for [$T; N] {
             fn repr(&self) -> SearchKey<'_> {
                 bytemuck::cast_slice(self).into()
@@ -96,6 +102,8 @@ impl OrderedBytesRepr for [u8] {}
 
 impl OrderedBytesRepr for Vec<u8> {}
 
+impl OrderedBytesRepr for Box<[u8]> {}
+
 impl<const N: usize> OrderedBytesRepr for [u8; N] {}
 
 impl OrderedBytesRepr for str {}
@@ -106,7 +114,9 @@ impl<T> OrderedBytesRepr for &T where T: OrderedBytesRepr + ?Sized {}
 
 #[cfg(test)]
 mod tests {
-    use super::BytesRepr;
+    use crate::ToBigEndian;
+
+    use super::{BytesRepr, Identity, Mapped};
 
     #[test]
     fn various_numeric_types_as_bytes() {
@@ -130,5 +140,42 @@ mod tests {
             Vec::<u16>::from([26343u16, 0, u16::MAX]).repr().as_ref(),
             &[26343u16.to_ne_bytes()[0], 26343u16.to_ne_bytes()[1], 0, 0, 255, 255]
         );
+    }
+
+    #[test]
+    fn mapped_identity() {
+        assert_eq!(Mapped::<Identity, _>::decompose(u8::MAX).repr().as_ref(), &[u8::MAX]);
+        assert_eq!(Mapped::<Identity, _>::decompose(i8::MAX).repr().as_ref(), &[i8::MAX as u8]);
+        assert_eq!(Mapped::<Identity, _>::decompose(65535u16).repr().as_ref(), 65535u16.to_ne_bytes());
+        assert_eq!(Mapped::<Identity, _>::decompose(32767i16).repr().as_ref(), 32767i16.to_ne_bytes());
+        assert_eq!(Mapped::<Identity, _>::decompose(2387u32).repr().as_ref(), 2387u32.to_ne_bytes());
+        assert_eq!(Mapped::<Identity, _>::decompose(2387i32).repr().as_ref(), 2387i32.to_ne_bytes());
+
+        // numeric arrays
+        assert_eq!(
+            Mapped::<Identity, _>::decompose([26343u16, 0, u16::MAX]).repr().as_ref(),
+            &[26343u16.to_ne_bytes()[0], 26343u16.to_ne_bytes()[1], 0, 0, 255, 255]
+        );
+        assert_eq!(
+            Mapped::<Identity, _>::decompose(Box::<[u16]>::from([26343u16, 0, u16::MAX])).repr().as_ref(),
+            &[26343u16.to_ne_bytes()[0], 26343u16.to_ne_bytes()[1], 0, 0, 255, 255]
+        );
+        assert_eq!(
+            Mapped::<Identity, _>::decompose(Vec::<u16>::from([26343u16, 0, u16::MAX])).repr().as_ref(),
+            &[26343u16.to_ne_bytes()[0], 26343u16.to_ne_bytes()[1], 0, 0, 255, 255]
+        );
+    }
+
+    #[test]
+    fn mapped_to_big_endian() {
+        assert_eq!(Mapped::<ToBigEndian, _>::decompose(u8::MAX).repr().as_ref(), &[u8::MAX]);
+        assert_eq!(Mapped::<ToBigEndian, _>::decompose(i8::MAX).repr().as_ref(), &[(i8::MAX as u8) ^ (1 << 7)]);
+        assert_eq!(Mapped::<ToBigEndian, _>::decompose(65535u16).repr().as_ref(), 65535u16.to_be_bytes());
+        assert_eq!(
+            Mapped::<ToBigEndian, _>::decompose(32767i16).repr().as_ref(),
+            ((32767i16 as u16) ^ (1 << 15)).to_be_bytes()
+        );
+        assert_eq!(Mapped::<ToBigEndian, _>::decompose(2387u32).repr().as_ref(), 2387u32.to_be_bytes());
+        assert_eq!(Mapped::<ToBigEndian, _>::decompose(2387i32).repr().as_ref(), ((2387i32 as u32) ^ (1 << 31)).to_be_bytes());
     }
 }

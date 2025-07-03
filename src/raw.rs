@@ -513,7 +513,7 @@ mod tests {
                     let min_leaf = leaves.manage(Leaf::new(b"abcdef".to_vec(), 0));
 
                     let mut inner = <$T>::from(Header::<3>::from(CompressedPath::new(b"abc", 5)));
-                    inner.add(b'f', min_leaf.into());
+                    inner.add(b'f', min_leaf.as_opaque());
 
                     let (key, leaf) = inner.read_full_prefix(0);
                     assert_eq!(leaf.expect("read from leaf"), min_leaf);

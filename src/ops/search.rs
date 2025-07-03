@@ -72,6 +72,22 @@ impl<K, V, const PARTIAL_LEN: usize> Search<K, V, PARTIAL_LEN> {
         }
     }
 
+    /// Searches for the leaf with the maximum key.
+    pub unsafe fn maximum(root: OpaqueNodePtr<K, V, PARTIAL_LEN>) -> NodePtr<Leaf<K, V>> {
+        let mut current_node = root;
+        loop {
+            current_node = match current_node.as_concrete() {
+                ConcreteNodePtr::Leaf(node_ptr) => {
+                    break node_ptr;
+                }
+                ConcreteNodePtr::Inner4(node_ptr) => unsafe { node_ptr.as_ref().max().1 },
+                ConcreteNodePtr::Inner16(node_ptr) => unsafe { node_ptr.as_ref().max().1 },
+                ConcreteNodePtr::Inner48(node_ptr) => unsafe { node_ptr.as_ref().max().1 },
+                ConcreteNodePtr::Inner256(node_ptr) => unsafe { node_ptr.as_ref().max().1 },
+            }
+        }
+    }
+
     /// Searches for the leaf whose key matches the given key.
     pub unsafe fn exact(root: OpaqueNodePtr<K, V, PARTIAL_LEN>, key: SearchKey<'_>) -> Option<NodePtr<Leaf<K, V>>>
     where

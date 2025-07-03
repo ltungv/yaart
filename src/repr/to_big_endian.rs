@@ -62,8 +62,8 @@ macro_rules! impl_to_big_endian_for_integer {
     };
 }
 
-impl_to_big_endian_for_integer!(u8, i8);
-impl_to_big_endian_for_integer!(u16, i16);
-impl_to_big_endian_for_integer!(u32, i32);
-impl_to_big_endian_for_integer!(u64, i64);
-impl_to_big_endian_for_integer!(u128, i128);
+impl_to_big_endian_for_integer!(i8, u8);
+impl_to_big_endian_for_integer!(i16, u16);
+impl_to_big_endian_for_integer!(i32, u32);
+impl_to_big_endian_for_integer!(i64, u64);
+impl_to_big_endian_for_integer!(i128, u128);
